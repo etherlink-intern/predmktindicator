@@ -11,11 +11,11 @@ Build a low-cost, trader-centric dashboard for f(x) Protocol that tracks wallets
 Start with a **hybrid free stack**:
 
 1. **Use f(x)'s existing leaderboard/API surface as seed data** to discover active wallets and baseline PNL/ROI/volume.
-2. **Index on-chain position contracts yourself** with a free/cheap hosted indexer first, preferably Goldsky if the free-tier limits work, but keep the ingestion design provider-agnostic so we can use The Graph, Envio, Subsquid, Ponder, or direct RPC log chunks as needed.
-3. **Use ClickHouse as the analytics storage layer** for immutable raw events, position snapshots, leaderboard snapshots, and pre-aggregated wallet stats. ClickHouse fits the product better than a pure OLTP database because the tracker is mostly append-heavy time-series analytics over wallets, positions, blocks, and rolling windows.
+2. **Index on-chain position contracts yourself** with a free hosted indexer first, preferably **Goldsky Starter** for fast setup, or **The Graph Studio** if you want the most portable subgraph model.
+3. **Keep raw snapshots in a cheap database** (Supabase/Neon free tier or SQLite during prototyping), because profile-level analytics need daily/hourly time series that are awkward to recompute from a subgraph alone.
 4. **Use free RPC quotas only for gap filling and ABI reads**, not for the main historical event stream. Goldsky's free Edge RPC or Chainstack's free Ethereum endpoint are good starting points; add Alchemy as a secondary key.
 
-This avoids paying for archive-node-style backfills while still giving us a durable path to a richer trader product. Use Postgres/Supabase only if we later need app metadata, auth, notes, watchlists, or moderation workflows; ClickHouse should be the source of truth for market/trader analytics.
+This avoids paying for archive-node-style backfills while still giving us a durable path to a richer trader product.
 
 ## What the existing sites reveal
 
@@ -141,30 +141,15 @@ Primary official resources:
 
 Known relevant addresses from public docs/search:
 
-> Current confidence: the **position manager and position NFT equivalents are the pool contracts themselves**. f(x) v2 positions appear to be ERC-721 positions minted/owned inside each long/short pool, while `PoolManager(Long)` and `ShortPoolManager` orchestrate operations. These should be treated as the first contracts to index for user-position tracking.
-
-| Component | Address / source | Notes for the tracker |
+| Component | Address / source | Notes |
 | --- | --- | --- |
-| `PoolManager(Long)` | `0x250893CA4Ba5d05626C785e8da758026928FCD24` | Core long-side manager. Index its operation/rebalance/liquidation events once ABI is confirmed. |
-| `ShortPoolManager` | `0xaCDc0AB51178d0Ae8F70c1EAd7d3cF5421FDd66D` | Core short-side manager. Index alongside short pools. |
-| wstETH Long Pool / AaveFundingPool ETH | `0x6Ecfa38FeE8a5277B91eFdA204c235814F0122E8` | Primary ERC-721 position pool for long wstETH/ETH exposure. A third-party explorer identifies token IDs here as `f(x) wstETH position`, standard ERC-721. |
-| WBTC Long Pool | `0xAB709e26Fa6B0A30c119D8c55B887DeD24952473` | Primary ERC-721 position pool for long WBTC exposure. |
-| wstETH Short Pool | `0x25707b9e6690B52C60aE6744d711cf9C1dFC1876` | Short-side structured position pool. |
-| WBTC Short Pool | `0xA0cC8162c523998856D59065fAa254F87D20A5b0` | Short-side structured position pool. |
-| fxETH / wstETH CreditNote | `0x7c5350BaC0eB97F86A366Ee4F9619a560480F05A` | CreditNote contract referenced by f(x) keeper docs; likely needed for short/rebalance accounting. |
-| fxBTC / WBTC CreditNote | `0xB25a554033C59e33e48c5dc05A7192Fb1bbDdfc6` | CreditNote contract referenced by f(x) keeper docs; likely needed for short/rebalance accounting. |
-| FxUSDBasePool / fxSP | `0x65C9A641afCEB9C0E6034e558A319488FA0FA3be` | Base stable pool used for fxUSD mint/deposit and fxSAVE two-step redemption. Useful context but not the primary xPOSITION NFT source. |
-| SavingFxUSD / fxSAVE | `0x7743e50F534a7f9F1791DdE7dCD89F7783Eefc39` | ERC-4626-like saving product; track for trader capital flows if profiles include stable yield behavior. |
-| fxUSD | `0x085780639CC2cACd35E474e71f4d000e2405d8f6` | Stable token used in minting/redemption/conversion flows. |
-| RouterManagementFacet / router diamond | `0x33636D49FbefBE798e15e7F356E8DBef543CC708` | f(x) router/diamond entry point visible in fxSAVE integration docs and Etherscan transaction labels; useful for decoding routed user actions. |
-| SavingFxUSDFacet | `0x56afB443dE36340c32f1a461605171992480059D` | Facet used for `instantRedeemFromFxSave`. |
-| MultiPathConverter | `0x12AF4529129303D7FbD2563E242C4a2890525912` | Converter used in fxSAVE examples for fxUSD/USDC routing. |
 | FXN | `0x365AccFCa291e7D3914637ABf1F7635dB165Bb09` | Governance/token context. |
+| fxUSD (legacy/beta docs table) | `0x085780639CC2cACd35E474e71f4d000e2405d8f6` | Docs and Etherscan identify this as f(x) USD / FxUSDRegeneracy proxy in older tables; verify against current v2 app before production. |
+| FxUSDRegeneracy implementation/reference | `0x1a144095ad1cb488fe6378dbfc62368a7453d114` appears in indexed contract sources | Search result identifies this as FxUSDRegeneracy; verify proxy/current production address. |
+| AaveFundingPool example | `0x7cacd4e098e2837643eeaaaefc040b87df29c332` | Etherscan search exposes `AaveFundingPool` ABI/events including position events. Verify market/pool mapping. |
 | f(x) deployer | `0x8345e79473cdcA968788d8AB9183ffB6c057Ca3e` | Search result labels as f(x) protocol deployer. Useful for finding contract creations. |
 
-Source notes: the f(x) keeper docs list the long/short managers, long/short pools, and CreditNote addresses; ETHGas' f(x) rebate page corroborates the long pools, short pools, base pool, and fxSAVE addresses; fxSAVE integration docs list router/facet/converter addresses.
-
-Important: before writing production code, run a final contract-discovery pass against the current app bundle, Etherscan labels, and official deployment JSON. The older Aladdin docs page has v1 and beta entries mixed with newer resources, so addresses must remain versioned and source-tagged.
+Important: before writing production code, run a contract-discovery pass against the current app bundle, Etherscan labels, and official deployment JSON. The docs page has older v1 and beta entries mixed with newer resources, so addresses must be versioned.
 
 ## Events and reads to index first
 
@@ -191,28 +176,24 @@ Contract reads needed for enrichment:
 
 ## Indexing architecture options
 
-### Option A: Goldsky Starter subgraph + ClickHouse export (recommended prototype)
+### Option A: Goldsky Starter subgraph (recommended prototype)
 
 Why:
 
-- Goldsky Starter currently documents access to Subgraphs, Mirror/Turbo pipelines, and Edge RPC. The free-tier pricing page currently lists 3 free always-on subgraph workers, 100k free stored subgraph entities, 1 free Mirror/Turbo worker, and 1M free Mirror/Turbo event writes.
-- Treat these as **current assumptions to verify in the actual Goldsky account before build**; if Turbo/Mirror is restricted, exhausted, or awkward for direct ClickHouse writes, the same segmented backfill plan still works with other providers or our own orchestrated workers.
+- Goldsky Starter is free and includes subgraphs, Mirror/Turbo, and Edge RPC access.
+- Current public pricing says Starter includes 3 always-on subgraphs, 100k free subgraph entities, and Edge RPC free requests.
 - Good for quick iteration and hosted indexing without running infrastructure.
-- ClickHouse becomes our durable store, so Goldsky can be treated as an indexing/export layer rather than the long-term historical database.
 
 Risks:
 
-- The 100k entity limit is an **entities stored** limit across active subgraphs, not just monthly query volume. If we index every position event/snapshot into subgraph entities forever, we will hit it.
-- Goldsky's docs say deleting a subgraph stops tracking stored entities, but historical deletes inside the subgraph do not reduce the count. In other words, do not rely on entity pruning as a quota strategy.
-- Standard EVM subgraphs support `startBlock`, but not a clean `endBlock` segment boundary. A temporary historical subgraph can start at a block, but it will keep indexing forward unless we stop/delete it after export.
-- Rate limits on free subgraph queries mean the public dashboard should query our API/ClickHouse cache, not Goldsky directly.
+- 100k entities may be tight if we index every snapshot/event forever. Use compact entities and store raw long-tail data in a database if needed.
+- Rate limits on free subgraph queries mean the public dashboard should cache API responses.
 
 Best use:
 
-- Keep one **live tail subgraph** with a compact schema for recent/open mutable state: active positions, current owner, latest position snapshot, and latest protocol indexes.
-- Use Goldsky **Turbo/Mirror Job Mode** for one-time historical block-range exports into ClickHouse where possible. Goldsky's Turbo docs state that EVM one-time ranges should use Job Mode with `start_at: earliest` plus a fast-scan filter and an upper `block_number` bound, because EVM dataset sources do not support `end_block`.
-- If we must use subgraphs for historical backfill, run temporary block-era subgraphs one at a time, export their GraphQL results to ClickHouse, verify row counts/checkpoints, then delete the temporary subgraph so stored entities no longer count. This is quota-conscious, but more operationally brittle than Turbo/Mirror Job Mode.
-- Goldsky Edge RPC remains useful for ABI reads and gap filling.
+- One Ethereum mainnet subgraph for f(x) position events.
+- One Mirror/Turbo pipeline later if we want raw event warehousing.
+- Goldsky Edge RPC for ABI reads and gap filling.
 
 ### Option B: The Graph Studio
 
@@ -232,14 +213,13 @@ Best use:
 - Build an open subgraph with stable schema.
 - Put our own API/cache in front of it so dashboard users do not burn raw query quota.
 
-### Option C: Self-hosted Ponder / Subsquid / Envio + ClickHouse
+### Option C: Self-hosted Ponder or Subsquid + SQLite/Postgres
 
 Why:
 
 - Cheapest at scale if hosted on a small VPS or free compute temporarily.
 - TypeScript development is faster for custom calculations.
-- Easier to push normalized rows directly into ClickHouse.
-- Good fallback if Goldsky Turbo/Mirror is unavailable on our account or if hosted subgraph limits get annoying.
+- Easier to store derived daily wallet profile aggregates.
 
 Risks:
 
@@ -249,8 +229,7 @@ Risks:
 Best use:
 
 - Use after confirming exact contracts and event model.
-- Run as workers owned by the orchestrator: backfill chunks, live tail, enrichment, and rollups.
-- Keep output schema identical to hosted-provider exports so we can swap providers without changing the dashboard API.
+- Run nightly/hourly job to update profiles and serve a Next.js dashboard.
 
 ## Cheap/free RPC plan
 
@@ -269,131 +248,6 @@ Cost controls:
 - Backfill once through indexer, then only tail new blocks.
 - Store derived snapshots so profile pages load from our DB/API.
 
-## ClickHouse storage plan
-
-Yes: ClickHouse is a strong default database for this tracker. The workload is mostly immutable, append-heavy, and analytical: wallet activity, position lifecycle events, block timestamps, price snapshots, leaderboard snapshots, and rolling stats. Those are better suited to ClickHouse than a transactional Postgres-first design.
-
-Recommended ClickHouse model:
-
-- **Raw append tables** using `MergeTree`, partitioned by month or week and ordered by `(chain_id, contract_address, block_number, log_index)` for events and `(wallet, window, snapshot_ts)` for profile snapshots.
-- **Idempotent ingest tables** using `ReplacingMergeTree(version)` or upstream de-duplication keyed by `(chain_id, tx_hash, log_index, event_name)` so retries from Goldsky/API jobs do not duplicate events.
-- **Current-state tables** for active positions and current wallet aggregates, either built with `ReplacingMergeTree` or refreshed by scheduled jobs from raw events.
-- **Rollup tables/materialized views** for leaderboard windows: all-time, 30D, 7D, 1D, hourly wallet activity, daily PNL, and market-level aggregates.
-- **Raw JSON payload columns** for undecoded event data so we can re-decode later without re-indexing.
-- **Checkpoint table** for every ingestion source: source name, contract, from_block, to_block, row count, checksum/hash if available, exported_at, and verification status.
-
-Suggested tables:
-
-| Table | Purpose | Notes |
-| --- | --- | --- |
-| `raw_fx_events` | Immutable decoded contract logs | Key by chain/tx/log; preserve raw payload and decoded fields. |
-| `raw_position_snapshots` | Position-level collateral/debt/tick snapshots | Useful for lifecycle charts and risk calculations. |
-| `raw_leaderboard_snapshots` | Official/Smartclaw leaderboard snapshots | Keep source and window so we can compare methodology. |
-| `position_current` | Latest position state | Upsert-style table for open-position cards. |
-| `wallet_window_stats` | All-time/30D/7D/1D wallet stats | Powers leaderboard directly. |
-| `wallet_daily_stats` | Daily rollups per wallet | Powers charts and fast historical profile queries. |
-| `ingest_checkpoints` | Backfill/live-tail bookkeeping | Prevents duplicated segment exports and documents data freshness. |
-
-Operational notes:
-
-- ClickHouse is excellent for the public analytics API, but we may still want a tiny Postgres/Supabase database for app concerns like user accounts, saved watchlists, internal annotations, feature flags, and moderation.
-- Do not expose ClickHouse directly to the browser. Put a small API/cache layer in front of it for rate limiting, query shaping, and stable response contracts.
-- Prefer append-and-recompute for derived stats. If the PNL methodology changes, keep raw events immutable and rebuild `wallet_window_stats`/`wallet_daily_stats`.
-
-## Goldsky segmentation / quota strategy
-
-The practical answer is: **yes, we can divide-and-conquer the historical buildout, but Goldsky should be one execution backend, not the whole plan.** As of the currently published Goldsky pricing docs, Starter includes Mirror/Turbo access with a free worker/write allowance, but we should verify that in the actual account before relying on it. Use Goldsky, The Graph, Envio, Subsquid, Ponder, or direct `eth_getLogs` chunk workers as interchangeable sources that all write durable rows into ClickHouse.
-
-Recommended strategy:
-
-1. **Historical backfill via Goldsky Turbo/Mirror Job Mode, if available**
-   - Define block-range jobs per contract/pool and write decoded rows into ClickHouse.
-   - For EVM ranges, use the Goldsky-recommended pattern: Job Mode with `start_at: earliest`, a fast-scan filter, and an upper `block_number` bound in the filter.
-   - Run segments like `deployment_block -> 2024-12-31`, monthly/quarterly ranges, or fixed block chunks depending on row volume.
-   - After each segment, write an `ingest_checkpoints` row with row count and status.
-
-2. **Provider-agnostic divide-and-conquer backfill**
-   - Split history by `(contract, event family, block_start, block_end)` and assign chunks to whichever backend is cheapest and working: Goldsky Job Mode, The Graph/Subgraph Studio exports, Envio/HyperIndex, Subsquid, Ponder, or raw RPC log fetchers.
-   - Store every output in the same ClickHouse raw tables so the downstream rollups do not care which backend produced the rows.
-   - Re-run failed chunks independently; never restart the whole backfill for one failed range.
-   - Use smaller chunks around high-volume periods and larger chunks around low-volume periods.
-
-3. **Live tail via compact subgraph or pipeline**
-   - Keep only current/open state and recent events in Goldsky if we need GraphQL convenience.
-   - Export new events to ClickHouse continuously or on a short cron.
-   - Query ClickHouse for product pages; do not use Goldsky as the public historical database.
-
-4. **Temporary subgraph fallback**
-   - If a subgraph mapping is easier than a Turbo transform for complex contract logic, deploy a temporary subgraph for a historical segment, export all entities to ClickHouse, verify, and delete the subgraph.
-   - This can keep active stored entities under the Starter threshold because deleted subgraphs no longer count as stored entities, but it is brittle because EVM subgraphs have a `startBlock` and no native `endBlock`. We need automation to stop/delete after the target block is exported.
-
-5. **ClickHouse as immutable archive**
-   - Once a block segment is exported and finalized, treat it as immutable. Past on-chain logs cannot change after sufficient confirmations/finality, so ClickHouse becomes the archive of record.
-   - If we discover a decoding bug, re-run the affected segment into a replacement table/version and swap derived views after validation.
-
-Guardrails:
-
-- This should be framed as **cost control within free-tier/provider rules**, not as evasion. Respect provider limits and upgrade or rotate to another backend if public traffic or data volume exceeds what is reasonable.
-- Keep segment sizes small enough to validate and replay. Monthly segments are easier to reason about than one huge genesis-to-present run.
-- Track checksums/counts per segment so a deleted temporary indexer can be recreated if needed.
-- Keep the live Goldsky schema compact: avoid storing per-wallet arrays, long historical snapshots, or derived leaderboard rows as subgraph entities.
-
-## Backfill orchestrator
-
-We need an orchestrator so the historical database can be built by many small jobs instead of one fragile monolithic backfill. The orchestrator should own planning, leasing, execution, verification, retries, and rollup triggers.
-
-### Orchestrator responsibilities
-
-- **Plan chunks** from `contracts/fx-v2.json`: one work item per contract/event/block range, with adaptive chunk sizes based on expected event density.
-- **Lease work** so multiple workers can run in parallel without duplicate effort.
-- **Select backend** per chunk: Goldsky Turbo/Mirror when available, temporary subgraph export for complex mappings, Envio/Subsquid/Ponder when cheaper or faster, or raw RPC logs for small targeted ranges.
-- **Write ClickHouse checkpoints** before/after each chunk with status, row counts, block bounds, backend, version, error, and timestamps.
-- **Validate output** by comparing raw log counts, expected event signatures, monotonic block ranges, and duplicate keys.
-- **Retry safely** with exponential backoff and a maximum-attempts/dead-letter queue.
-- **Promote data** from raw staging tables into canonical raw tables only after validation.
-- **Trigger rollups** after a segment is finalized: update `position_current`, `wallet_daily_stats`, and `wallet_window_stats`.
-- **Expose progress** for an admin dashboard: percent complete by contract, lag from chain head, failed chunks, rows ingested, provider cost/usage, and next scheduled work.
-
-### Suggested orchestrator tables
-
-| Table | Purpose | Key fields |
-| --- | --- | --- |
-| `ingest_jobs` | One logical campaign, e.g. `wsteth-long-pool-backfill-v1` | job_id, contract, event_family, planned_from_block, planned_to_block, status |
-| `ingest_chunks` | Individual block-range tasks | chunk_id, job_id, from_block, to_block, backend, priority, status, attempts, lease_owner, lease_until |
-| `ingest_chunk_results` | Verification/audit output | chunk_id, rows_written, duplicate_rows, min_block, max_block, checksum, duration_ms, cost_estimate |
-| `ingest_provider_usage` | Provider-level budget tracking | backend, day, worker_hours, event_writes, rpc_calls, dollars_estimated |
-| `rollup_runs` | Derived table refresh tracking | rollup_name, from_block, to_block, status, rows_affected, completed_at |
-
-### Worker types
-
-- `planner`: creates chunk plans from contract start blocks to target finality block.
-- `executor-goldsky`: launches/polls Goldsky Job Mode or temporary subgraph exports when available.
-- `executor-subgraph`: pages through hosted subgraph GraphQL results for a bounded segment.
-- `executor-rpc`: uses provider RPC logs for small or missing ranges.
-- `executor-ponder/envio/subsquid`: runs self-hosted/provider-specific backfill jobs with the same output schema.
-- `verifier`: checks staging rows and promotes valid chunks.
-- `rollup`: refreshes derived ClickHouse tables and leaderboard windows.
-
-### Chunk sizing
-
-Start conservative, then adapt:
-
-- Prototype: 25k-100k blocks per chunk per contract/event family.
-- High-volume periods: shrink to 5k-25k blocks.
-- Low-volume periods: expand to 250k+ blocks.
-- Always align chunk boundaries to finalized blocks and never let workers write unfinalized history into immutable tables.
-
-## Design system provenance
-
-Use **shadcn/ui** as the primary UI provenance for the tracker design system. The site positions itself as "The Foundation for your Design System" and provides open-source, customizable, extensible components and blocks that can be adapted rather than treated as a locked visual kit.
-
-Recommended design approach:
-
-- Use shadcn/ui primitives for tables, tabs, cards, sheets, dialogs, dropdown menus, command/search, badges, tooltips, skeletons, charts, and data-display states.
-- Keep the visual language terminal/markets-native: dense tables, compact cards, monospace addresses, green/red performance deltas, and strong stale-data indicators.
-- Build dashboard-specific components on top of shadcn/ui rather than copying external dashboards directly: `PerformanceTabs`, `TraderRankTable`, `PositionCard`, `PnLChart`, `ActivityFeed`, `RiskBadge`, `AnticsTag`, and `AddressIdentity`.
-- Treat this as a provenance/inspiration source, not a finished brand: customize colors, spacing density, typography, empty states, and chart styling for f(x) trader analytics.
-
 ## Dashboard features to build
 
 ### Protocol overview cards
@@ -407,155 +261,31 @@ Recommended design approach:
 - fxUSD supply / fxSAVE APY / TVL context
 - latest funding/borrow rate
 
-### Page 1: Trader leaderboard
+### Trader leaderboard
 
-The leaderboard should be the primary discovery page: fast, dense, sortable, and explicitly time-windowed. It should answer, "Who is performing, over what window, with how much risk and how much recent activity?"
+Sort/filter by:
 
-#### Time windows
+- PNL
+- ROI
+- volume
+- net capital flow
+- win rate
+- max drawdown
+- realized vs unrealized PNL
+- recent activity
+- open risk
+- antics tags
 
-Provide one top-level segmented control with these windows:
+### Trader profile page
 
-- **All time**: lifetime tracked performance from first indexed position/activity.
-- **30D**: rolling 30-day performance.
-- **7D**: rolling 7-day performance; this mirrors the official leaderboard's visible emphasis but should not be the only view.
-- **1D**: rolling 24-hour performance for current activity and momentum.
-
-Each row should recalculate the same core metrics for the selected window, while still showing lifetime context in compact secondary cells/tooltips when useful.
-
-#### Primary table columns
-
-- Rank and rank delta versus previous snapshot/window.
-- Trader identity: wallet, ENS/name if available, known labels, copy address, explorer link.
-- PNL: absolute USD PNL for selected window.
-- ROI: percent return for selected window.
-- Volume / notional traded.
-- Net capital flow: deposits minus withdrawals / collateral in minus out.
-- Realized PNL vs unrealized PNL split.
-- Active positions count and total open notional.
-- Win rate and closed-trade count for the selected window.
-- Average hold time.
-- Max drawdown or worst open-position drawdown.
-- Liquidation/rebalance exposure count.
-- Antics tags: scalper, whale, averager, max leverage, rebalance survivor, etc.
-- Last activity timestamp.
-
-#### Filters and controls
-
-- Search by wallet, ENS, position ID, or label.
-- Filter by market: wstETH/ETH long, WBTC long, wstETH short, WBTC short, fxSAVE/fxUSD flows.
-- Filter by status: currently active, closed-only, liquidated/rebalanced, high risk, whale, new trader.
-- Filter by behavior tag.
-- Toggle "include tiny wallets" / minimum volume threshold so a wallet with one lucky tiny trade does not dominate ROI.
-- Toggle "verified methodology only" to hide rows where PNL confidence is low.
-
-#### Leaderboard summary cards
-
-- Number of tracked traders in the selected window.
-- Total volume/notional and open notional.
-- Aggregate realized/unrealized PNL.
-- Median ROI and average ROI.
-- Winners vs losers.
-- Most active market.
-- Biggest open risk bucket.
-- Data freshness: last indexed block, last leaderboard snapshot, last RPC enrichment run.
-
-#### Row drill-down preview
-
-Clicking or hovering a row should show a compact preview before opening the trader page:
-
-- Mini PNL sparkline.
-- Current open positions with market and estimated risk.
-- Last 3 actions.
-- Top behavior tags and why they were assigned.
-
-### Page 2: Trader profile / user tracker page
-
-The trader page should answer, "What is this wallet doing right now, what positions does it hold, how has it behaved historically, and how reliable are its stats?"
-
-#### Header and identity
-
-- Wallet address with copy, explorer, and share links.
-- ENS/name/avatar when available.
-- Labels: whale, high frequency, challenge farmer, high risk, new wallet, smart wallet candidate.
-- First seen / last seen.
-- Current leaderboard rank across All time, 30D, 7D, and 1D.
-- Data confidence badge: high/medium/low depending on indexed contracts, snapshots, price coverage, and whether official leaderboard data agrees.
-
-#### Current activity panel
-
-- Last action and last transaction.
-- Active session summary: actions in the last 1h/24h/7d.
-- Current market focus.
-- Recent deposits/withdrawals/net flow.
-- Recent increases/decreases/closes.
-- Alerts: position near rebalance/liquidation band, sudden size increase, repeated averaging, stale oracle/indexer data.
-
-#### Open positions
-
-For every open position, show:
-
-- Position ID / NFT ID and owning wallet.
-- Pool/market and direction/type.
-- Collateral, debt, leverage/debt-ratio, entry estimate, current price estimate.
-- Realized-to-date and unrealized PNL estimate.
-- Position age and last modified timestamp.
-- Distance to rebalance/liquidation thresholds where derivable.
-- Tick/range data and recent tick movements.
-- Fees/funding/borrow-cost estimate.
-- Action history for that position.
-
-#### Limit orders / pending intent, if possible
-
-Native on-chain position contracts may not expose a conventional order book. Add this section with an explicit confidence label:
-
-- **Confirmed on-chain orders**: only show if the current f(x) router/manager emits or stores pending order/limit-order state.
-- **Routed/automation intents**: if f(x) uses off-chain signatures, Gelato/keeper automation, private APIs, or frontend-managed order intents, show them only if an accessible API or indexed event source exists and terms permit.
-- **Not available**: if pending intent is not public, show a transparent empty state explaining that unsubmitted/off-chain limit orders cannot be inferred from public chain data.
-- For any available order/intent, show side, market, trigger/limit price, size, expiry, created time, source, and confidence.
-
-#### Past activity
-
-- Chronological event feed across opens, increases, decreases, closes, transfers, liquidations, rebalances, fxUSD/fxSAVE flows, and notable approvals.
-- Filters by action type, position, market, size, and time.
-- Group events into trade lifecycles so users can review full position stories, not just transactions.
-- Show decoded transaction links and raw-event fallback when decoding confidence is low.
-
-#### Trader statistics
-
-Core stats:
-
-- All-time, 30D, 7D, and 1D PNL/ROI.
-- Realized PNL, unrealized PNL, and total PNL.
-- Total volume/notional.
-- Net capital flow.
-- Open notional and active collateral.
-- Closed trades, wins, losses, win rate.
-- Profit factor and average win/average loss.
-- Median hold time and longest/shortest hold.
-- Max drawdown and worst single trade.
-- Best trade and biggest open position.
-- Liquidation/rebalance count and survival rate after rebalance.
-- Fee/funding/borrow-cost estimate.
-
-Behavior stats:
-
-- Markets traded most.
-- Typical position sizing and size variance.
-- Adds-to-winners vs adds-to-losers.
-- Time-of-day / day-of-week activity heatmap.
-- Average reaction time after large price/tick moves.
-- Antics tags with explanations and the exact evidence used.
-
-#### Charts
-
-- Cumulative PNL line.
-- ROI by window.
-- Equity/capital-flow curve.
-- Open notional over time.
-- Position lifecycle Gantt/timeline.
-- Drawdown chart.
-- Market allocation donut/bar.
-- Activity heatmap.
+- wallet header: address, ENS, labels, first/last seen
+- cumulative PNL/ROI chart
+- position timeline
+- current open positions
+- closed trades table
+- behavioral tags and explanations
+- risk panel: liquidation/rebalance proximity, leverage/debt ratio, concentration
+- copy-trade caution card: sample size, stale data, protocol risk
 
 ### Position detail page
 
@@ -588,12 +318,10 @@ flowchart TD
   A[Official f(x) leaderboard/API] --> B[Wallet seed job]
   C[Goldsky/The Graph subgraph] --> D[Indexer GraphQL API]
   E[RPC providers] --> F[ABI read/gap-fill worker]
-  J[Goldsky Turbo/Mirror segment jobs] --> G[ClickHouse analytics DB]
-  B --> G
+  B --> G[Postgres/Supabase/Neon]
   D --> G
   F --> G
-  G --> K[Rollup/materialized stats]
-  K --> H[Backend API/cache]
+  G --> H[Backend API/cache]
   H --> I[Trader dashboard]
 ```
 
@@ -612,17 +340,17 @@ Deliverable: `contracts.json` with verified addresses, start blocks, ABI source,
 
 - Ingest official leaderboard data if endpoint is available and terms permit.
 - Ingest Smartclaw public endpoints as a comparison source only.
-- Store daily wallet snapshots with PNL, ROI, volume, and net flow in ClickHouse.
+- Store daily wallet snapshots with PNL, ROI, volume, net.
 - Build a basic leaderboard UI.
 
 Deliverable: profiles with leaderboard metrics but no deep position timeline yet.
 
 ### Phase 2: Position event indexer
 
-- Deploy a compact Goldsky/The Graph live-tail subgraph for confirmed position/pool events.
-- Use the orchestrator to divide-and-conquer historical chunks across Goldsky Turbo/Mirror if available, other hosted indexers, self-hosted Ponder/Envio/Subsquid workers, or raw RPC log workers.
+- Deploy Goldsky/The Graph subgraph for confirmed position/pool events.
 - Index position ownership, snapshots, tick movement, and pool-level events.
-- Create ClickHouse raw, current-state, checkpoint, and derived rollup tables.
+- Backfill to contract start blocks.
+- Create derived position state tables.
 
 Deliverable: per-wallet list of open/closed positions with transaction timeline.
 
@@ -637,8 +365,8 @@ Deliverable: a differentiated trader-profile dashboard.
 
 ### Phase 4: Cost hardening
 
-- Put a cached API between frontend and ClickHouse/Goldsky.
-- Precompute daily/hourly aggregates in ClickHouse.
+- Put a cached API between frontend and subgraph.
+- Precompute daily/hourly aggregates.
 - Add provider failover.
 - Add rate-limit monitoring and staleness banners.
 
@@ -651,7 +379,7 @@ Deliverable: public dashboard that stays within free/cheap quotas.
 | Official leaderboard endpoint is private or changes | Treat it as seed/comparison only; rely on on-chain indexer for core profile history. |
 | PNL methodology differs from official leaderboard | Show methodology and confidence levels; compare against official/Smartclaw snapshots. |
 | Contract addresses are mixed across v1/v2/beta docs | Version every address and verify against current app/etherscan before indexing. |
-| Free subgraph/entity quotas exceeded or Goldsky Turbo unavailable | Use ClickHouse as durable history, run the orchestrator across alternate hosted providers/self-hosted indexers/RPC chunks, keep any live subgraph compact, and delete temporary historical subgraphs after verified export. |
+| Free subgraph/entity quotas exceeded | Store raw history compactly; aggregate old events; cache frontend; move to self-hosted Ponder if needed. |
 | RPC costs explode during backfill | Let hosted indexer backfill logs; RPC only for targeted reads. |
 | Trader labels become defamatory or misleading | Use neutral, explainable tags and avoid personal claims beyond on-chain behavior. |
 
@@ -668,10 +396,9 @@ Deliverable: public dashboard that stays within free/cheap quotas.
 
 ### Accounts / services
 
-- Goldsky account (Starter/free, verify Turbo/Mirror availability), The Graph Studio account, and at least one fallback indexer path (Envio/Subsquid/Ponder or direct RPC workers).
+- Goldsky account (Starter/free) or The Graph Studio account.
 - One or more free RPC accounts: Goldsky Edge, Chainstack, Alchemy.
-- ClickHouse: local OSS Docker for prototype, then ClickHouse Cloud or a cheap self-hosted ClickHouse node for production analytics.
-- Optional Supabase/Neon/Postgres only for app metadata, watchlists, auth, and admin workflows.
+- Supabase or Neon free Postgres account, or local SQLite for prototype.
 - Vercel/Cloudflare Pages for frontend hosting.
 - GitHub Actions cron or a cheap worker for snapshots.
 
@@ -679,12 +406,7 @@ Deliverable: public dashboard that stays within free/cheap quotas.
 
 - `contracts/fx-v2.json`: verified addresses, start blocks, ABI source.
 - `subgraph/`: manifest, schema, mappings, ABI files.
-- `db/clickhouse/schema.sql`: raw event, snapshot, current-state, checkpoint, and rollup tables.
-- `workers/snapshot-leaderboard.ts`: leaderboard snapshot ingest into ClickHouse.
-- `workers/orchestrator/plan-backfill.ts`: create contract/event/block-range chunks.
-- `workers/orchestrator/run-chunk.ts`: execute a chunk through Goldsky, another hosted indexer, self-hosted indexer, or RPC fallback.
-- `workers/orchestrator/verify-chunk.ts`: validate rows, checkpoints, and promote staging data.
-- `workers/export-goldsky-segment.ts`: segmented Goldsky Turbo/Mirror or temporary-subgraph export into ClickHouse when available.
+- `workers/snapshot-leaderboard.ts`: leaderboard snapshot ingest.
 - `workers/enrich-positions.ts`: RPC reads and derived metrics.
 - `api/traders`, `api/traders/:address`, `api/positions/:id`.
 - `docs/methodology.md`: PNL/ROI and tag methodology.
@@ -695,17 +417,11 @@ Deliverable: public dashboard that stays within free/cheap quotas.
 - Official f(x) leaderboard: <https://fx.aladdin.club/v2/leaderboard>
 - Official f(x) useful links/docs: <https://docs.aladdin.club/f-x-protocol/useful-links>
 - Official f(x) contracts/docs: <https://docs.aladdin.club/f-x-protocol/contracts>
-- f(x) keeper contract addresses: <https://fxprotocol.gitbook.io/fx-docs/developers/processing-the-rebalances-and-liquidations>
-- f(x) fxSAVE integration addresses: <https://fxprotocol.gitbook.io/fx-docs/developers/integrating-fxsave>
-- ETHGas f(x) eligible contract list: <https://docs.ethgas.com/overview/open-gas/f-x-protocol>
 - AladdinDAO GitHub organization: <https://github.com/AladdinDAO>
 - f(x) v2 OpenZeppelin audit: <https://www.openzeppelin.com/news/fx-v2-audit>
 - Smartclaw docs/API reference: <https://alidashboard.up.railway.app/docs>
 - Smartclaw public site: <https://smartclaw.xyz/>
-- shadcn/ui design system and component provenance: <https://ui.shadcn.com/?utm_source=chatgpt.com>
-- ClickHouse docs: <https://clickhouse.com/docs>
 - Goldsky pricing/docs: <https://docs.goldsky.com/pricing>
-- Goldsky Turbo supported sources and Job Mode notes: <https://docs.goldsky.com/turbo-pipelines/sources/overview>
 - The Graph subgraph docs: <https://thegraph.com/docs/en/subgraphs/developing/subgraphs/>
 - The Graph Studio pricing: <https://thegraph.com/studio-pricing/>
 - Chainstack Ethereum RPC/free endpoint info: <https://chainstack.com/build-better-with-ethereum>
