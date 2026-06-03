@@ -1,0 +1,114 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: fx-trader-profiles-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-fx_trader_profiles}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:-fx_trader_profiles}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    image: ${APP_IMAGE:-fx-trader-profiles-web:local}
+    container_name: fx-trader-profiles-web
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      GOLDSKY_SUBGRAPH_URL: ${GOLDSKY_SUBGRAPH_URL:-}
+      GOLDSKY_API_KEY: ${GOLDSKY_API_KEY:-}
+      THE_GRAPH_SUBGRAPH_URL: ${THE_GRAPH_SUBGRAPH_URL:-}
+      GOLDSKY_RPC_URL: ${GOLDSKY_RPC_URL:-}
+      CHAINSTACK_RPC_URL: ${CHAINSTACK_RPC_URL:-}
+      ALCHEMY_RPC_URL: ${ALCHEMY_RPC_URL:-}
+      FX_LEADERBOARD_API_URL: ${FX_LEADERBOARD_API_URL:-}
+      SMARTCLAW_BASE_URL: ${SMARTCLAW_BASE_URL:-https://alidashboard.up.railway.app}
+      SMARTCLAW_SITE_URL: ${SMARTCLAW_SITE_URL:-https://smartclaw.xyz}
+      CRON_SECRET: ${CRON_SECRET:?CRON_SECRET is required}
+      NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-fx-trader-profiles}
+      NEXT_PUBLIC_DEFAULT_CHAIN_ID: ${NEXT_PUBLIC_DEFAULT_CHAIN_ID:-1}
+    ports:
+      - "${WEB_BIND_HOST:-127.0.0.1}:${WEB_PORT:-3000}:3000"
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  cron:
+    image: alpine:3.20
+    container_name: fx-trader-profiles-cron
+    restart: unless-stopped
+    depends_on:
+      web:
+        condition: service_started
+    environment:
+      APP_URL: ${APP_URL:-http://web:3000}
+      CRON_SECRET: ${CRON_SECRET:?CRON_SECRET is required}
+    command:
+      - /bin/sh
+      - -c
+      - |
+        apk add --no-cache curl tzdata >/dev/null
+        cat > /etc/crontabs/root <<EOF_CRON
+        */30 * * * * curl -fsS -X POST "$${APP_URL}/api/jobs/snapshot-leaderboard" -H "Authorization: Bearer $${CRON_SECRET}" >> /var/log/cron.log 2>&1
+        */30 * * * * curl -fsS -X POST "$${APP_URL}/api/jobs/sync-subgraph" -H "Authorization: Bearer $${CRON_SECRET}" >> /var/log/cron.log 2>&1
+        0 */2 * * * curl -fsS -X POST "$${APP_URL}/api/jobs/enrich-positions" -H "Authorization: Bearer $${CRON_SECRET}" >> /var/log/cron.log 2>&1
+        15 */2 * * * curl -fsS -X POST "$${APP_URL}/api/jobs/compute-trader-metrics" -H "Authorization: Bearer $${CRON_SECRET}" >> /var/log/cron.log 2>&1
+        EOF_CRON
+        crond -f -l 8
+
+
+  postgres-backup:
+    image: prodrigestivill/postgres-backup-local:16-alpine
+    container_name: fx-trader-profiles-postgres-backup
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: ${POSTGRES_DB:-fx_trader_profiles}
+      POSTGRES_USER: ${POSTGRES_USER:-fx_trader_profiles}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      SCHEDULE: ${POSTGRES_BACKUP_SCHEDULE:-@daily}
+      BACKUP_KEEP_DAYS: ${POSTGRES_BACKUP_KEEP_DAYS:-7}
+      BACKUP_KEEP_WEEKS: ${POSTGRES_BACKUP_KEEP_WEEKS:-4}
+      BACKUP_KEEP_MONTHS: ${POSTGRES_BACKUP_KEEP_MONTHS:-3}
+      HEALTHCHECK_PORT: 8080
+    volumes:
+      - postgres-backups:/backups
+
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: fx-trader-profiles-watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      WATCHTOWER_POLL_INTERVAL: ${WATCHTOWER_POLL_INTERVAL:-86400}
+      WATCHTOWER_CLEANUP: ${WATCHTOWER_CLEANUP:-true}
+      WATCHTOWER_INCLUDE_RESTARTING: ${WATCHTOWER_INCLUDE_RESTARTING:-true}
+      WATCHTOWER_LABEL_ENABLE: ${WATCHTOWER_LABEL_ENABLE:-true}
+    command: --label-enable
+
+volumes:
+  postgres-data:
+  postgres-backups:
