@@ -1,0 +1,15 @@
+{
+  "name": "fx-trader-profiles",
+  "private": true,
+  "packageManager": "pnpm@10.24.0",
+  "scripts": {
+    "dev": "pnpm --filter @fx-trader-profiles/web dev",
+    "build": "pnpm --filter @fx-trader-profiles/web build",
+    "start": "pnpm --filter @fx-trader-profiles/web start",
+    "lint": "pnpm --filter @fx-trader-profiles/web lint",
+    "test": "pnpm --filter @fx-trader-profiles/web test",
+    "db:push": "echo \"TODO: add Drizzle migrations in Phase 0\"",
+    "scripts:discover-contracts": "pnpm discover:contracts",
+    "discover:contracts": "echo \"TODO: implement workers/discover-contracts.ts in Phase 2\""
+  }
+}
