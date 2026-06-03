@@ -56,10 +56,16 @@ set -a
 source "$ENV_FILE"
 set +a
 
-compose pull postgres postgres-backup watchtower cron || true
-compose build web
-compose up -d postgres
-compose up -d
+if [[ "${APP_IMAGE:-}" == "ghcr.io/your-org/fx-trader-profiles-web:latest" || -z "${APP_IMAGE:-}" ]]; then
+  echo "APP_IMAGE still points at the placeholder image." >&2
+  echo "Starting Postgres, backups, and Watchtower only. Set APP_IMAGE in .env, then run this script again to start web/cron." >&2
+  compose pull postgres postgres-backup watchtower || true
+  compose up -d postgres postgres-backup watchtower
+else
+  compose pull || true
+  compose up -d postgres
+  compose up -d
+fi
 
 echo
 echo "Self-hosted stack setup completed."
