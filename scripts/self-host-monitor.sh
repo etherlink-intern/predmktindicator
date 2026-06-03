@@ -33,7 +33,7 @@ section "Docker Compose services"
 docker compose ps
 
 section "Container health"
-for service in postgres web cron postgres-backup watchtower; do
+for service in postgres web cron postgres-backup; do
   cid="$(docker compose ps -q "$service" 2>/dev/null || true)"
   if [ -z "$cid" ]; then
     echo "FAIL - $service is not created" >&2
@@ -47,6 +47,20 @@ for service in postgres web cron postgres-backup watchtower; do
     failures=$((failures + 1))
   fi
   if [ "$health" = "unhealthy" ]; then
+    failures=$((failures + 1))
+  fi
+done
+
+for service in watchtower; do
+  cid="$(docker compose ps -q "$service" 2>/dev/null || true)"
+  if [ -z "$cid" ]; then
+    echo "SKIP - $service is not enabled (optional updates profile)"
+    continue
+  fi
+  state="$(docker inspect -f '{{.State.Status}}' "$cid")"
+  health="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}' "$cid")"
+  echo "$service: state=$state health=$health"
+  if [ "$state" != "running" ] || [ "$health" = "unhealthy" ]; then
     failures=$((failures + 1))
   fi
 done

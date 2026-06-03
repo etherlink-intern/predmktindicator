@@ -56,21 +56,15 @@ set -a
 source "$ENV_FILE"
 set +a
 
-if [[ "${APP_IMAGE:-}" == "ghcr.io/your-org/fx-trader-profiles-web:latest" || -z "${APP_IMAGE:-}" ]]; then
-  echo "APP_IMAGE still points at the placeholder image." >&2
-  echo "Starting Postgres, backups, and Watchtower only. Set APP_IMAGE in .env, then run this script again to start web/cron." >&2
-  compose pull postgres postgres-backup watchtower || true
-  compose up -d postgres postgres-backup watchtower
-else
-  compose pull || true
-  compose up -d postgres
-  compose up -d
-fi
+compose pull postgres cron postgres-backup || true
+compose build web
+compose up -d postgres
+compose up -d
 
 echo
 echo "Self-hosted stack setup completed."
 echo "Next steps:"
-echo "  1. Replace APP_IMAGE in .env with your published app image if you have not already."
-echo "  2. Point your reverse proxy at http://127.0.0.1:${WEB_PORT:-3000}."
-echo "  3. Run: scripts/self-host-monitor.sh"
-echo "  4. Run migrations when the app exists: pnpm db:push"
+echo "  1. Point your reverse proxy at http://127.0.0.1:${WEB_PORT:-3000} if exposing publicly."
+echo "  2. Run: scripts/self-host-monitor.sh"
+echo "  3. Run migrations when implemented: pnpm db:push"
+echo "  4. Optional registry auto-updates: docker compose --profile updates up -d watchtower"

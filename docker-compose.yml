@@ -17,7 +17,11 @@ services:
       start_period: 20s
 
   web:
-    image: ${APP_IMAGE:-ghcr.io/your-org/fx-trader-profiles-web:latest}
+    image: ${APP_IMAGE:-fx-trader-profiles-web:local}
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      target: runner
     container_name: fx-trader-profiles-web
     restart: unless-stopped
     depends_on:
@@ -32,6 +36,9 @@ services:
       GOLDSKY_RPC_URL: ${GOLDSKY_RPC_URL:-}
       CHAINSTACK_RPC_URL: ${CHAINSTACK_RPC_URL:-}
       ALCHEMY_RPC_URL: ${ALCHEMY_RPC_URL:-}
+      ETHEREUM_RPC_URL: ${ETHEREUM_RPC_URL:-}
+      ETHEREUM_RPC_FALLBACK_URLS: ${ETHEREUM_RPC_FALLBACK_URLS:-}
+      ETHERSCAN_API_KEY: ${ETHERSCAN_API_KEY:-}
       FX_LEADERBOARD_API_URL: ${FX_LEADERBOARD_API_URL:-}
       SMARTCLAW_BASE_URL: ${SMARTCLAW_BASE_URL:-https://alidashboard.up.railway.app}
       SMARTCLAW_SITE_URL: ${SMARTCLAW_SITE_URL:-https://smartclaw.xyz}
@@ -96,6 +103,7 @@ services:
   watchtower:
     image: containrrr/watchtower:latest
     container_name: fx-trader-profiles-watchtower
+    profiles: ["updates"]
     restart: unless-stopped
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
