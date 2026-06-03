@@ -24,7 +24,7 @@ It does **not** yet include production contract discovery, real leaderboard inge
 flowchart TD
   Goldsky[Goldsky hosted subgraph] --> Web[Next.js web/API]
   RPC[Goldsky/Chainstack/Alchemy RPC] --> Web
-  Seeds[Official f(x) leaderboard + Smartclaw] --> Web
+  Seeds["Official f(x) leaderboard + Smartclaw"] --> Web
   Web --> Postgres[(Postgres)]
   Cron[Cron container / scheduler] --> Web
   Web --> UI[Dashboard UI]
