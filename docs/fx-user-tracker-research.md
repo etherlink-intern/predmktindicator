@@ -141,30 +141,15 @@ Primary official resources:
 
 Known relevant addresses from public docs/search:
 
-> Current confidence: the **position manager and position NFT equivalents are the pool contracts themselves**. f(x) v2 positions appear to be ERC-721 positions minted/owned inside each long/short pool, while `PoolManager(Long)` and `ShortPoolManager` orchestrate operations. These should be treated as the first contracts to index for user-position tracking.
-
-| Component | Address / source | Notes for the tracker |
+| Component | Address / source | Notes |
 | --- | --- | --- |
-| `PoolManager(Long)` | `0x250893CA4Ba5d05626C785e8da758026928FCD24` | Core long-side manager. Index its operation/rebalance/liquidation events once ABI is confirmed. |
-| `ShortPoolManager` | `0xaCDc0AB51178d0Ae8F70c1EAd7d3cF5421FDd66D` | Core short-side manager. Index alongside short pools. |
-| wstETH Long Pool / AaveFundingPool ETH | `0x6Ecfa38FeE8a5277B91eFdA204c235814F0122E8` | Primary ERC-721 position pool for long wstETH/ETH exposure. A third-party explorer identifies token IDs here as `f(x) wstETH position`, standard ERC-721. |
-| WBTC Long Pool | `0xAB709e26Fa6B0A30c119D8c55B887DeD24952473` | Primary ERC-721 position pool for long WBTC exposure. |
-| wstETH Short Pool | `0x25707b9e6690B52C60aE6744d711cf9C1dFC1876` | Short-side structured position pool. |
-| WBTC Short Pool | `0xA0cC8162c523998856D59065fAa254F87D20A5b0` | Short-side structured position pool. |
-| fxETH / wstETH CreditNote | `0x7c5350BaC0eB97F86A366Ee4F9619a560480F05A` | CreditNote contract referenced by f(x) keeper docs; likely needed for short/rebalance accounting. |
-| fxBTC / WBTC CreditNote | `0xB25a554033C59e33e48c5dc05A7192Fb1bbDdfc6` | CreditNote contract referenced by f(x) keeper docs; likely needed for short/rebalance accounting. |
-| FxUSDBasePool / fxSP | `0x65C9A641afCEB9C0E6034e558A319488FA0FA3be` | Base stable pool used for fxUSD mint/deposit and fxSAVE two-step redemption. Useful context but not the primary xPOSITION NFT source. |
-| SavingFxUSD / fxSAVE | `0x7743e50F534a7f9F1791DdE7dCD89F7783Eefc39` | ERC-4626-like saving product; track for trader capital flows if profiles include stable yield behavior. |
-| fxUSD | `0x085780639CC2cACd35E474e71f4d000e2405d8f6` | Stable token used in minting/redemption/conversion flows. |
-| RouterManagementFacet / router diamond | `0x33636D49FbefBE798e15e7F356E8DBef543CC708` | f(x) router/diamond entry point visible in fxSAVE integration docs and Etherscan transaction labels; useful for decoding routed user actions. |
-| SavingFxUSDFacet | `0x56afB443dE36340c32f1a461605171992480059D` | Facet used for `instantRedeemFromFxSave`. |
-| MultiPathConverter | `0x12AF4529129303D7FbD2563E242C4a2890525912` | Converter used in fxSAVE examples for fxUSD/USDC routing. |
 | FXN | `0x365AccFCa291e7D3914637ABf1F7635dB165Bb09` | Governance/token context. |
+| fxUSD (legacy/beta docs table) | `0x085780639CC2cACd35E474e71f4d000e2405d8f6` | Docs and Etherscan identify this as f(x) USD / FxUSDRegeneracy proxy in older tables; verify against current v2 app before production. |
+| FxUSDRegeneracy implementation/reference | `0x1a144095ad1cb488fe6378dbfc62368a7453d114` appears in indexed contract sources | Search result identifies this as FxUSDRegeneracy; verify proxy/current production address. |
+| AaveFundingPool example | `0x7cacd4e098e2837643eeaaaefc040b87df29c332` | Etherscan search exposes `AaveFundingPool` ABI/events including position events. Verify market/pool mapping. |
 | f(x) deployer | `0x8345e79473cdcA968788d8AB9183ffB6c057Ca3e` | Search result labels as f(x) protocol deployer. Useful for finding contract creations. |
 
-Source notes: the f(x) keeper docs list the long/short managers, long/short pools, and CreditNote addresses; ETHGas' f(x) rebate page corroborates the long pools, short pools, base pool, and fxSAVE addresses; fxSAVE integration docs list router/facet/converter addresses.
-
-Important: before writing production code, run a final contract-discovery pass against the current app bundle, Etherscan labels, and official deployment JSON. The older Aladdin docs page has v1 and beta entries mixed with newer resources, so addresses must remain versioned and source-tagged.
+Important: before writing production code, run a contract-discovery pass against the current app bundle, Etherscan labels, and official deployment JSON. The docs page has older v1 and beta entries mixed with newer resources, so addresses must be versioned.
 
 ## Events and reads to index first
 
@@ -263,17 +248,6 @@ Cost controls:
 - Backfill once through indexer, then only tail new blocks.
 - Store derived snapshots so profile pages load from our DB/API.
 
-## Design system provenance
-
-Use **shadcn/ui** as the primary UI provenance for the tracker design system. The site positions itself as "The Foundation for your Design System" and provides open-source, customizable, extensible components and blocks that can be adapted rather than treated as a locked visual kit.
-
-Recommended design approach:
-
-- Use shadcn/ui primitives for tables, tabs, cards, sheets, dialogs, dropdown menus, command/search, badges, tooltips, skeletons, charts, and data-display states.
-- Keep the visual language terminal/markets-native: dense tables, compact cards, monospace addresses, green/red performance deltas, and strong stale-data indicators.
-- Build dashboard-specific components on top of shadcn/ui rather than copying external dashboards directly: `PerformanceTabs`, `TraderRankTable`, `PositionCard`, `PnLChart`, `ActivityFeed`, `RiskBadge`, `AnticsTag`, and `AddressIdentity`.
-- Treat this as a provenance/inspiration source, not a finished brand: customize colors, spacing density, typography, empty states, and chart styling for f(x) trader analytics.
-
 ## Dashboard features to build
 
 ### Protocol overview cards
@@ -287,155 +261,31 @@ Recommended design approach:
 - fxUSD supply / fxSAVE APY / TVL context
 - latest funding/borrow rate
 
-### Page 1: Trader leaderboard
+### Trader leaderboard
 
-The leaderboard should be the primary discovery page: fast, dense, sortable, and explicitly time-windowed. It should answer, "Who is performing, over what window, with how much risk and how much recent activity?"
+Sort/filter by:
 
-#### Time windows
+- PNL
+- ROI
+- volume
+- net capital flow
+- win rate
+- max drawdown
+- realized vs unrealized PNL
+- recent activity
+- open risk
+- antics tags
 
-Provide one top-level segmented control with these windows:
+### Trader profile page
 
-- **All time**: lifetime tracked performance from first indexed position/activity.
-- **30D**: rolling 30-day performance.
-- **7D**: rolling 7-day performance; this mirrors the official leaderboard's visible emphasis but should not be the only view.
-- **1D**: rolling 24-hour performance for current activity and momentum.
-
-Each row should recalculate the same core metrics for the selected window, while still showing lifetime context in compact secondary cells/tooltips when useful.
-
-#### Primary table columns
-
-- Rank and rank delta versus previous snapshot/window.
-- Trader identity: wallet, ENS/name if available, known labels, copy address, explorer link.
-- PNL: absolute USD PNL for selected window.
-- ROI: percent return for selected window.
-- Volume / notional traded.
-- Net capital flow: deposits minus withdrawals / collateral in minus out.
-- Realized PNL vs unrealized PNL split.
-- Active positions count and total open notional.
-- Win rate and closed-trade count for the selected window.
-- Average hold time.
-- Max drawdown or worst open-position drawdown.
-- Liquidation/rebalance exposure count.
-- Antics tags: scalper, whale, averager, max leverage, rebalance survivor, etc.
-- Last activity timestamp.
-
-#### Filters and controls
-
-- Search by wallet, ENS, position ID, or label.
-- Filter by market: wstETH/ETH long, WBTC long, wstETH short, WBTC short, fxSAVE/fxUSD flows.
-- Filter by status: currently active, closed-only, liquidated/rebalanced, high risk, whale, new trader.
-- Filter by behavior tag.
-- Toggle "include tiny wallets" / minimum volume threshold so a wallet with one lucky tiny trade does not dominate ROI.
-- Toggle "verified methodology only" to hide rows where PNL confidence is low.
-
-#### Leaderboard summary cards
-
-- Number of tracked traders in the selected window.
-- Total volume/notional and open notional.
-- Aggregate realized/unrealized PNL.
-- Median ROI and average ROI.
-- Winners vs losers.
-- Most active market.
-- Biggest open risk bucket.
-- Data freshness: last indexed block, last leaderboard snapshot, last RPC enrichment run.
-
-#### Row drill-down preview
-
-Clicking or hovering a row should show a compact preview before opening the trader page:
-
-- Mini PNL sparkline.
-- Current open positions with market and estimated risk.
-- Last 3 actions.
-- Top behavior tags and why they were assigned.
-
-### Page 2: Trader profile / user tracker page
-
-The trader page should answer, "What is this wallet doing right now, what positions does it hold, how has it behaved historically, and how reliable are its stats?"
-
-#### Header and identity
-
-- Wallet address with copy, explorer, and share links.
-- ENS/name/avatar when available.
-- Labels: whale, high frequency, challenge farmer, high risk, new wallet, smart wallet candidate.
-- First seen / last seen.
-- Current leaderboard rank across All time, 30D, 7D, and 1D.
-- Data confidence badge: high/medium/low depending on indexed contracts, snapshots, price coverage, and whether official leaderboard data agrees.
-
-#### Current activity panel
-
-- Last action and last transaction.
-- Active session summary: actions in the last 1h/24h/7d.
-- Current market focus.
-- Recent deposits/withdrawals/net flow.
-- Recent increases/decreases/closes.
-- Alerts: position near rebalance/liquidation band, sudden size increase, repeated averaging, stale oracle/indexer data.
-
-#### Open positions
-
-For every open position, show:
-
-- Position ID / NFT ID and owning wallet.
-- Pool/market and direction/type.
-- Collateral, debt, leverage/debt-ratio, entry estimate, current price estimate.
-- Realized-to-date and unrealized PNL estimate.
-- Position age and last modified timestamp.
-- Distance to rebalance/liquidation thresholds where derivable.
-- Tick/range data and recent tick movements.
-- Fees/funding/borrow-cost estimate.
-- Action history for that position.
-
-#### Limit orders / pending intent, if possible
-
-Native on-chain position contracts may not expose a conventional order book. Add this section with an explicit confidence label:
-
-- **Confirmed on-chain orders**: only show if the current f(x) router/manager emits or stores pending order/limit-order state.
-- **Routed/automation intents**: if f(x) uses off-chain signatures, Gelato/keeper automation, private APIs, or frontend-managed order intents, show them only if an accessible API or indexed event source exists and terms permit.
-- **Not available**: if pending intent is not public, show a transparent empty state explaining that unsubmitted/off-chain limit orders cannot be inferred from public chain data.
-- For any available order/intent, show side, market, trigger/limit price, size, expiry, created time, source, and confidence.
-
-#### Past activity
-
-- Chronological event feed across opens, increases, decreases, closes, transfers, liquidations, rebalances, fxUSD/fxSAVE flows, and notable approvals.
-- Filters by action type, position, market, size, and time.
-- Group events into trade lifecycles so users can review full position stories, not just transactions.
-- Show decoded transaction links and raw-event fallback when decoding confidence is low.
-
-#### Trader statistics
-
-Core stats:
-
-- All-time, 30D, 7D, and 1D PNL/ROI.
-- Realized PNL, unrealized PNL, and total PNL.
-- Total volume/notional.
-- Net capital flow.
-- Open notional and active collateral.
-- Closed trades, wins, losses, win rate.
-- Profit factor and average win/average loss.
-- Median hold time and longest/shortest hold.
-- Max drawdown and worst single trade.
-- Best trade and biggest open position.
-- Liquidation/rebalance count and survival rate after rebalance.
-- Fee/funding/borrow-cost estimate.
-
-Behavior stats:
-
-- Markets traded most.
-- Typical position sizing and size variance.
-- Adds-to-winners vs adds-to-losers.
-- Time-of-day / day-of-week activity heatmap.
-- Average reaction time after large price/tick moves.
-- Antics tags with explanations and the exact evidence used.
-
-#### Charts
-
-- Cumulative PNL line.
-- ROI by window.
-- Equity/capital-flow curve.
-- Open notional over time.
-- Position lifecycle Gantt/timeline.
-- Drawdown chart.
-- Market allocation donut/bar.
-- Activity heatmap.
+- wallet header: address, ENS, labels, first/last seen
+- cumulative PNL/ROI chart
+- position timeline
+- current open positions
+- closed trades table
+- behavioral tags and explanations
+- risk panel: liquidation/rebalance proximity, leverage/debt ratio, concentration
+- copy-trade caution card: sample size, stale data, protocol risk
 
 ### Position detail page
 
@@ -567,14 +417,10 @@ Deliverable: public dashboard that stays within free/cheap quotas.
 - Official f(x) leaderboard: <https://fx.aladdin.club/v2/leaderboard>
 - Official f(x) useful links/docs: <https://docs.aladdin.club/f-x-protocol/useful-links>
 - Official f(x) contracts/docs: <https://docs.aladdin.club/f-x-protocol/contracts>
-- f(x) keeper contract addresses: <https://fxprotocol.gitbook.io/fx-docs/developers/processing-the-rebalances-and-liquidations>
-- f(x) fxSAVE integration addresses: <https://fxprotocol.gitbook.io/fx-docs/developers/integrating-fxsave>
-- ETHGas f(x) eligible contract list: <https://docs.ethgas.com/overview/open-gas/f-x-protocol>
 - AladdinDAO GitHub organization: <https://github.com/AladdinDAO>
 - f(x) v2 OpenZeppelin audit: <https://www.openzeppelin.com/news/fx-v2-audit>
 - Smartclaw docs/API reference: <https://alidashboard.up.railway.app/docs>
 - Smartclaw public site: <https://smartclaw.xyz/>
-- shadcn/ui design system and component provenance: <https://ui.shadcn.com/?utm_source=chatgpt.com>
 - Goldsky pricing/docs: <https://docs.goldsky.com/pricing>
 - The Graph subgraph docs: <https://thegraph.com/docs/en/subgraphs/developing/subgraphs/>
 - The Graph Studio pricing: <https://thegraph.com/studio-pricing/>
