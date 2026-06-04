@@ -61,6 +61,7 @@ export default async function TraderPage({ params }: TraderPageProps) {
         <div><span className="metric-value" style={{ fontSize: 20 }}>{formatUsd(s.notionalValueUsd)}</span><div className="metric-label">Notional</div></div>
         <div><span className="metric-value" style={{ fontSize: 20, color: s.equityUsd >= 0 ? "var(--positive)" : "var(--negative)" }}>{formatUsd(s.equityUsd)}</span><div className="metric-label">Equity</div></div>
         <div><span className="metric-value" style={{ fontSize: 20 }}>{formatUsd(s.debtValueUsd)}</span><div className="metric-label">Debt</div></div>
+        <div><span className="metric-value" style={{ fontSize: 20 }}>{formatUsd(s.feesUsd)}</span><div className="metric-label">Fees paid</div></div>
         <div><span className="metric-value" style={{ fontSize: 20 }}>{nf.format(s.positions)}</span><div className="metric-label">Positions</div></div>
         <div><span className="metric-value" style={{ fontSize: 20 }}>{formatPercent(s.maxDebtRatio)}</span><div className="metric-label">Max debt ratio</div></div>
       </div>

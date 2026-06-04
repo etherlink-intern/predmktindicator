@@ -42,16 +42,24 @@ function decodeAddress(result: string): string {
 
 async function ethCall(to: string, data: string, timeout = 30): Promise<string> {
   const body = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_call", params: [{ to, data }, "latest"] });
-  const res = await fetch(rpcUrl(), { method: "POST", headers: { "content-type": "application/json" }, body, signal: AbortSignal.timeout(timeout * 1000) });
-  const json = await res.json() as { result?: string; error?: { message?: string } };
-  if (!json.result) throw new Error(json.error?.message || "eth_call failed");
-  return json.result;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const res = await fetch(rpcUrl(), { method: "POST", headers: { "content-type": "application/json" }, body, signal: AbortSignal.timeout(timeout * 1000) });
+    const json = await res.json() as { result?: string; error?: { message?: string } };
+    if (json.result) return json.result;
+    if (json.error?.message?.includes("capacity") || json.error?.message?.includes("rate")) {
+      await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+      continue;
+    }
+    throw new Error(json.error?.message || "eth_call failed");
+  }
+  throw new Error("eth_call failed after retries");
 }
 
-async function batchEthCall(calls: Array<{ id: string; to: string; data: string }>, timeout = 60): Promise<Map<string, string | null>> {
+async function batchEthCall(calls: Array<{ id: string; to: string; data: string }>, timeout = 90): Promise<Map<string, string | null>> {
   const results = new Map<string, string | null>();
-  for (let i = 0; i < calls.length; i += 20) {
-    const chunk = calls.slice(i, i + 20);
+  const batchSize = 10;
+  for (let i = 0; i < calls.length; i += batchSize) {
+    const chunk = calls.slice(i, i + batchSize);
     const payload = chunk.map((c) => ({ jsonrpc: "2.0", id: c.id, method: "eth_call", params: [{ to: c.to, data: c.data }, "latest"] }));
     const res = await fetch(rpcUrl(), {
       method: "POST",
@@ -63,7 +71,8 @@ async function batchEthCall(calls: Array<{ id: string; to: string; data: string 
     for (const item of batch) {
       results.set(item.id, item.result || null);
     }
-    await new Promise((r) => setTimeout(r, 100));
+    // Throttle to stay under Alchemy free-tier rate limits (~300 CU/s)
+    await new Promise((r) => setTimeout(r, 400));
   }
   return results;
 }
