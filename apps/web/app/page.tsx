@@ -41,47 +41,55 @@ function ExposureBar({
       </div>
       <svg
         width="100%"
-        height="48"
-        viewBox="0 0 600 48"
+        height="58"
+        viewBox="0 0 600 58"
         preserveAspectRatio="xMidYMid meet"
         style={{ display: "block" }}
+        role="img"
+        aria-label={`${label}: short ${formatUsd(shortUsd)} on the left, long ${formatUsd(longUsd)} on the right`}
       >
+        {/* End labels */}
+        <text x="12" y="11" textAnchor="start" fill="#fecaca" fontSize="11" fontWeight={800} letterSpacing="1">
+          SHORT
+        </text>
+        <text x="588" y="11" textAnchor="end" fill="#bbf7d0" fontSize="11" fontWeight={800} letterSpacing="1">
+          LONG
+        </text>
+
         {/* Background track */}
-        <rect x="0" y="14" width="600" height="20" rx="10" fill="rgba(148,163,184,0.08)" />
+        <rect x="0" y="18" width="600" height="20" rx="10" fill="rgba(148,163,184,0.08)" />
 
-        {/* Long bar (right from center) */}
+        {/* Short bar (left from center), scaled by share of total open interest */}
         <rect
-          x="300"
-          y="14"
-          width={Math.min(longPct * 3, 300)}
-          height="20"
-          rx="10"
-          fill={color}
-          opacity="0.85"
-        />
-
-        {/* Short bar (left from center) */}
-        <rect
-          x={300 - Math.min(shortPct * 3, 300)}
-          y="14"
-          width={Math.min(shortPct * 3, 300)}
+          x={300 - shortWidth}
+          y="18"
+          width={shortWidth}
           height="20"
           rx="10"
           fill="#ef4444"
           opacity="0.85"
         />
 
+        {/* Long bar (right from center), scaled by share of total open interest */}
+        <rect
+          x="300"
+          y="18"
+          width={longWidth}
+          height="20"
+          rx="10"
+          fill={color}
+          opacity="0.85"
+        />
+
         {/* Center line */}
-        <line x1="300" y1="8" x2="300" y2="40" stroke="rgba(148,163,184,0.4)" strokeWidth="1.5" />
+        <line x1="300" y1="12" x2="300" y2="46" stroke="rgba(148,163,184,0.4)" strokeWidth="1.5" />
 
-        {/* Long label */}
-        <text x={300 + Math.min(longPct * 3, 300) / 2} y="10" textAnchor="middle" fill="#bbf7d0" fontSize="11" fontWeight={700}>
-          Long {formatUsd(longUsd)}
+        {/* Value labels */}
+        <text x="12" y="54" textAnchor="start" fill="#fecaca" fontSize="11" fontWeight={700}>
+          Short {formatUsd(shortUsd)} ({formatPercent(shortShare)})
         </text>
-
-        {/* Short label */}
-        <text x={300 - Math.min(shortPct * 3, 300) / 2} y="10" textAnchor="middle" fill="#fecaca" fontSize="11" fontWeight={700}>
-          Short {formatUsd(shortUsd)}
+        <text x="588" y="54" textAnchor="end" fill="#bbf7d0" fontSize="11" fontWeight={700}>
+          Long {formatUsd(longUsd)} ({formatPercent(longShare)})
         </text>
       </svg>
     </div>
