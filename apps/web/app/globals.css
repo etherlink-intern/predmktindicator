@@ -42,11 +42,92 @@ a {
   gap: 16px;
 }
 
+.card-grid.compact {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  margin: 24px 0;
+}
+
 .card {
   border: 1px solid rgba(148, 163, 184, 0.22);
   border-radius: 18px;
   background: rgba(17, 24, 39, 0.72);
   padding: 20px;
+}
+
+.card.warning {
+  margin-top: 24px;
+  border-color: rgba(251, 191, 36, 0.44);
+}
+
+.section-header {
+  align-items: end;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  margin: 40px 0 16px;
+}
+
+.button {
+  border: 1px solid rgba(56, 189, 248, 0.48);
+  border-radius: 999px;
+  color: var(--accent);
+  padding: 10px 14px;
+}
+
+.table-card {
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 18px;
+  background: rgba(17, 24, 39, 0.72);
+  margin-top: 20px;
+  overflow-x: auto;
+}
+
+table {
+  border-collapse: collapse;
+  min-width: 760px;
+  width: 100%;
+}
+
+th,
+td {
+  border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+  padding: 14px 16px;
+  text-align: left;
+}
+
+th {
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+tr:last-child td {
+  border-bottom: 0;
+}
+
+.pill {
+  border-radius: 999px;
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 9px;
+  text-transform: uppercase;
+}
+
+.pill.long {
+  background: rgba(34, 197, 94, 0.16);
+  color: #86efac;
+}
+
+.pill.short {
+  background: rgba(248, 113, 113, 0.16);
+  color: #fca5a5;
+}
+
+.mono {
+  color: #bae6fd;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
 }
 
 .eyebrow {
