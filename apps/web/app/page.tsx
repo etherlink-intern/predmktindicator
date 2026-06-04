@@ -2,109 +2,177 @@ import { displayInstrument, displayPool, formatDate, formatPercent, formatUsd, g
 import { LastRefreshedCounter } from "./last-refreshed";
 
 const numberFormatter = new Intl.NumberFormat("en-US");
+const compactFormatter = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 });
 
-export const dynamic = "force-dynamic";
-
-function ExposureBar({
+function ExposureBiasRow({
   label,
   longUsd,
   shortUsd,
-  color,
 }: {
   label: string;
   longUsd: number;
   shortUsd: number;
-  color: string;
 }) {
   const total = longUsd + shortUsd || 1;
-  const longShare = longUsd / total;
-  const shortShare = shortUsd / total;
-  const longWidth = longShare * 300;
-  const shortWidth = shortShare * 300;
+  const longPct = (longUsd / total) * 100;
+  const shortPct = (shortUsd / total) * 100;
   const net = longUsd - shortUsd;
-  const netLabel = net > 0 ? "Net long" : net < 0 ? "Net short" : "Flat";
-  const netColor = net > 0 ? "#22c55e" : net < 0 ? "#ef4444" : "#94a3b8";
+  const dominant = net > 0 ? "long" : "short";
+  const dominantPct = Math.max(longPct, shortPct);
+  const ratio = shortUsd > 0 ? (longUsd / shortUsd).toFixed(1) : "∞";
 
   return (
-    <div style={{ marginTop: "10px" }}>
+    <div
+      style={{
+        padding: "12px 0",
+        borderBottom: "1px solid rgba(148,163,184,0.10)",
+      }}
+    >
+      {/* Row 1: label + net */}
       <div
         style={{
           display: "flex",
           justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: "8px",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <span
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: "50%",
+              background: label === "ETH" ? "#627eea" : "#f7931a",
+              display: "inline-block",
+              flexShrink: 0,
+            }}
+          />
+          <span style={{ fontWeight: 700, fontSize: "13px", letterSpacing: "0.02em" }}>
+            {label}
+          </span>
+          <span
+            style={{
+              fontSize: "12px",
+              fontWeight: 700,
+              color: dominant === "long" ? "#22c55e" : "#ef4444",
+            }}
+          >
+            {formatUsd(Math.abs(net))}
+          </span>
+          <span
+            style={{
+              fontSize: "11px",
+              color: "var(--muted)",
+              fontWeight: 600,
+            }}
+          >
+            {dominant === "long" ? "Net long" : "Net short"}
+          </span>
+        </div>
+      </div>
+
+      {/* Bias bar — fills proportionally to show dominance */}
+      <div
+        style={{
+          position: "relative",
+          height: 20,
+          background: "rgba(148,163,184,0.06)",
+          borderRadius: 3,
+          overflow: "hidden",
           marginBottom: "6px",
         }}
       >
-        <span style={{ fontWeight: 700, fontSize: "14px" }}>{label}</span>
-        <span style={{ color: netColor, fontWeight: 700, fontSize: "14px" }}>
-          {netLabel} {formatUsd(Math.abs(net))}
+        {/* Long fill (left) */}
+        <div
+          style={{
+            position: "absolute",
+            left: 0,
+            top: 0,
+            height: "100%",
+            width: `${longPct}%`,
+            background: "rgba(34,197,94,0.35)",
+            transition: "width 0.3s",
+          }}
+        />
+        {/* Short fill (right) */}
+        <div
+          style={{
+            position: "absolute",
+            right: 0,
+            top: 0,
+            height: "100%",
+            width: `${shortPct}%`,
+            background: "rgba(239,68,68,0.35)",
+            transition: "width 0.3s",
+          }}
+        />
+        {/* 50/50 tick */}
+        <div
+          style={{
+            position: "absolute",
+            left: "50%",
+            top: 0,
+            width: 1,
+            height: "100%",
+            background: "rgba(148,163,184,0.15)",
+          }}
+        />
+        {/* Dominant label overlay */}
+        <div
+          style={{
+            position: "absolute",
+            top: 0,
+            height: "100%",
+            display: "flex",
+            alignItems: "center",
+            paddingLeft: dominant === "long" ? "8px" : undefined,
+            paddingRight: dominant === "short" ? "8px" : undefined,
+            left: dominant === "long" ? 0 : undefined,
+            right: dominant === "short" ? 0 : undefined,
+            justifyContent: dominant === "long" ? "flex-start" : "flex-end",
+            width: "100%",
+          }}
+        >
+          <span
+            style={{
+              fontSize: "11px",
+              fontWeight: 700,
+              letterSpacing: "0.04em",
+              color: dominant === "long" ? "rgba(187,247,208,0.9)" : "rgba(254,202,202,0.9)",
+            }}
+          >
+            {dominantPct.toFixed(1)}% {dominant === "long" ? "LONG" : "SHORT"}
+          </span>
+        </div>
+      </div>
+
+      {/* Row 2: detail metrics */}
+      <div
+        style={{
+          display: "flex",
+          gap: "16px",
+          fontSize: "11px",
+          color: "var(--muted)",
+          flexWrap: "wrap",
+        }}
+      >
+        <span>
+          Long <b style={{ color: "rgba(187,247,208,0.85)" }}>{formatUsd(longUsd)}</b> ({longPct.toFixed(1)}%)
+        </span>
+        <span>
+          Short <b style={{ color: "rgba(254,202,202,0.85)" }}>{formatUsd(shortUsd)}</b> ({shortPct.toFixed(1)}%)
+        </span>
+        <span>
+          Ratio <b style={{ color: "#e2e8f0" }}>{ratio}x</b>
         </span>
       </div>
-      <svg
-        width="100%"
-        height="58"
-        viewBox="0 0 600 58"
-        preserveAspectRatio="xMidYMid meet"
-        style={{ display: "block" }}
-        role="img"
-        aria-label={`${label}: short ${formatUsd(shortUsd)} on the left, long ${formatUsd(longUsd)} on the right`}
-      >
-        {/* End labels */}
-        <text x="12" y="11" textAnchor="start" fill="#fecaca" fontSize="11" fontWeight={800} letterSpacing="1">
-          SHORT
-        </text>
-        <text x="588" y="11" textAnchor="end" fill="#bbf7d0" fontSize="11" fontWeight={800} letterSpacing="1">
-          LONG
-        </text>
-
-        {/* Background track */}
-        <rect x="0" y="18" width="600" height="20" rx="10" fill="rgba(148,163,184,0.08)" />
-
-        {/* Short bar (left from center), scaled by share of total open interest */}
-        <rect
-          x={300 - shortWidth}
-          y="18"
-          width={shortWidth}
-          height="20"
-          rx="10"
-          fill="#ef4444"
-          opacity="0.85"
-        />
-
-        {/* Long bar (right from center), scaled by share of total open interest */}
-        <rect
-          x="300"
-          y="18"
-          width={longWidth}
-          height="20"
-          rx="10"
-          fill={color}
-          opacity="0.85"
-        />
-
-        {/* Center line */}
-        <line x1="300" y1="12" x2="300" y2="46" stroke="rgba(148,163,184,0.4)" strokeWidth="1.5" />
-
-        {/* Value labels */}
-        <text x="12" y="54" textAnchor="start" fill="#fecaca" fontSize="11" fontWeight={700}>
-          Short {formatUsd(shortUsd)} ({formatPercent(shortShare)})
-        </text>
-        <text x="588" y="54" textAnchor="end" fill="#bbf7d0" fontSize="11" fontWeight={700}>
-          Long {formatUsd(longUsd)} ({formatPercent(longShare)})
-        </text>
-      </svg>
     </div>
   );
 }
 
 export default async function HomePage() {
   const dashboard = await getDashboardData();
-  const snapshotCards = [
-    ["Open positions", numberFormatter.format(dashboard.totals.openPositions), "Active position NFTs confirmed on-chain"],
-    ["Active wallets", numberFormatter.format(dashboard.totals.uniqueTraders), "Wallets that currently own tracked positions"],
-    ["Indexed events", numberFormatter.format(dashboard.totals.syncedEvents), "Synced transfers, cashflows, and pool snapshots from Envio"],
-    ["Current equity", formatUsd(dashboard.totals.equityUsd), "Estimated current equity across tracked positions"],
-    ["Last updated", formatDate(dashboard.generatedAt), "Most recent dashboard refresh"]
-  ];
 
   // Compute per-instrument exposure from pool data
   const ethLong = dashboard.pools
@@ -119,6 +187,18 @@ export default async function HomePage() {
   const btcShort = dashboard.pools
     .filter((p) => p.side === "short" && displayInstrument(p.collateral) === "BTC")
     .reduce((s, p) => s + p.debtValueUsd, 0);
+
+  const totalOi = ethLong + ethShort + btcLong + btcShort;
+  const totalLong = ethLong + btcLong;
+  const totalShort = ethShort + btcShort;
+
+  const snapshotCards = [
+    ["Open positions", numberFormatter.format(dashboard.totals.openPositions), "Active position NFTs confirmed on-chain"],
+    ["Active wallets", numberFormatter.format(dashboard.totals.uniqueTraders), "Wallets that currently own tracked positions"],
+    ["Indexed events", numberFormatter.format(dashboard.totals.syncedEvents), "Synced transfers, cashflows, and pool snapshots from Envio"],
+    ["Current equity", formatUsd(dashboard.totals.equityUsd), "Estimated current equity across tracked positions"],
+    ["Last updated", formatDate(dashboard.generatedAt), "Most recent dashboard refresh"]
+  ];
 
   const globalTrackers = [
     [
@@ -170,7 +250,7 @@ export default async function HomePage() {
       </p>
       <LastRefreshedCounter generatedAt={dashboard.generatedAt} />
 
-      <div className="card-grid">
+      <div className="card-grid" style={{ marginTop: "16px" }}>
         {snapshotCards.map(([label, value, detail]) => (
           <article className="card" key={label}>
             <p className="muted">{label}</p>
@@ -180,26 +260,67 @@ export default async function HomePage() {
         ))}
       </div>
 
+      {/* Global Exposure Widget */}
       <div className="section-header">
         <div>
-          <p className="eyebrow">Global exposure</p>
-          <h2>Long vs short by instrument</h2>
+          <p className="eyebrow">Positioning & crowding</p>
+          <h2>Global exposure by instrument</h2>
         </div>
       </div>
 
-      <article className="card" style={{ padding: "12px 14px" }}>
-        <ExposureBar
-          label="ETH / wstETH"
-          longUsd={ethLong}
-          shortUsd={ethShort}
-          color="#627eea"
-        />
-        <ExposureBar
-          label="BTC / WBTC"
-          longUsd={btcLong}
-          shortUsd={btcShort}
-          color="#f7931a"
-        />
+      <article
+        className="card"
+        style={{
+          padding: "4px 20px 8px",
+          fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace",
+        }}
+      >
+        {/* Header row */}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            padding: "8px 0 4px",
+            borderBottom: "1px solid rgba(148,163,184,0.10)",
+            fontSize: "10px",
+            color: "var(--muted)",
+            letterSpacing: "0.08em",
+            textTransform: "uppercase",
+          }}
+        >
+          <span>Instrument</span>
+          <span style={{ textAlign: "right" }}>Net exposure</span>
+        </div>
+
+        <ExposureBiasRow label="ETH" longUsd={ethLong} shortUsd={ethShort} />
+        <ExposureBiasRow label="BTC" longUsd={btcLong} shortUsd={btcShort} />
+
+        {/* Footer summary */}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            paddingTop: "10px",
+            fontSize: "11px",
+            color: "var(--muted)",
+            flexWrap: "wrap",
+            gap: "8px",
+          }}
+        >
+          <span>
+            Total OI: <b style={{ color: "#e2e8f0" }}>{formatUsd(totalOi)}</b>
+          </span>
+          <span>
+            Long: <b style={{ color: "rgba(187,247,208,0.85)" }}>{formatUsd(totalLong)}</b> ({(totalLong / totalOi * 100).toFixed(1)}%)
+          </span>
+          <span>
+            Short: <b style={{ color: "rgba(254,202,202,0.85)" }}>{formatUsd(totalShort)}</b> ({(totalShort / totalOi * 100).toFixed(1)}%)
+          </span>
+          <span>
+            Ratio: <b style={{ color: "#e2e8f0" }}>{(totalLong / (totalShort || 1)).toFixed(1)}x</b>
+          </span>
+        </div>
       </article>
 
       <div className="section-header">
