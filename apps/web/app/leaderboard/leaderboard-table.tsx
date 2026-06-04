@@ -114,20 +114,27 @@ export function LeaderboardTable({ traders }: LeaderboardTableProps) {
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [minPositions, setMinPositions] = useState("1");
   const [minNotional, setMinNotional] = useState("100");
+  const [walletSearch, setWalletSearch] = useState("");
 
   const filtered = useMemo(() => {
     const positionFloor = parseNumber(minPositions);
     const notionalFloor = parseNumber(minNotional);
+    const search = walletSearch.toLowerCase().trim();
 
     return [...traders]
-      .filter((trader) => trader.positions >= positionFloor && trader.notionalValueUsd >= notionalFloor)
+      .filter((trader) => {
+        if (trader.positions < positionFloor) return false;
+        if (trader.notionalValueUsd < notionalFloor) return false;
+        if (search && !trader.owner.toLowerCase().includes(search)) return false;
+        return true;
+      })
       .sort((a, b) => {
         const first = a[sortKey];
         const second = b[sortKey];
         const delta = first === second ? a.owner.localeCompare(b.owner) : first - second;
         return sortDirection === "asc" ? delta : -delta;
       });
-  }, [traders, minPositions, minNotional, sortDirection, sortKey]);
+  }, [traders, minPositions, minNotional, sortDirection, sortKey, walletSearch]);
 
   function updateSort(nextKey: SortKey) {
     if (nextKey === sortKey) {
@@ -160,6 +167,15 @@ export function LeaderboardTable({ traders }: LeaderboardTableProps) {
             type="number"
             value={minNotional}
             onChange={(event) => setMinNotional(event.target.value)}
+          />
+        </label>
+        <label>
+          <span>Wallet search</span>
+          <input
+            placeholder="0x..."
+            type="text"
+            value={walletSearch}
+            onChange={(event) => setWalletSearch(event.target.value)}
           />
         </label>
         <p className="muted small">
