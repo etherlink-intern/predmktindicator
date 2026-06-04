@@ -19,8 +19,8 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
             <a href="/methodology">Methodology</a>
             <a href="/privacy">Privacy</a>
             <span className="nav-spacer" />
-            <a className="nav-external" href="https://fxprotocolstats.com" target="_blank" rel="noopener noreferrer">
-              Protocol stats ↗
+            <a className="nav-external" href="https://fxprotocolstats.com" target="_blank" rel="noopener noreferrer" title="Third-party dashboard — not affiliated">
+              Protocol stats <sup style={{fontSize:"9px"}}>3rd party</sup> ↗
             </a>
           </nav>
           {children}
