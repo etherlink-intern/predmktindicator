@@ -6,6 +6,8 @@ export const metadata: Metadata = {
   description: "Public dashboard for active f(x) Protocol positions and wallet-level risk metrics."
 };
 
+export const dynamic = "force-dynamic";
+
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">

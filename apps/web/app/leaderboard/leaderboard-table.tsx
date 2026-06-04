@@ -5,16 +5,12 @@ import type { TraderSummary } from "../../lib/fx-dashboard";
 
 type SortKey =
   | "notionalValueUsd"
-  | "positions"
   | "equityUsd"
   | "debtValueUsd"
   | "maxDebtRatio"
   | "ethNetExposureUsd"
   | "btcNetExposureUsd"
-  | "pools"
-  | "unrealizedPnlUsd"
-  | "totalPnlUsd"
-  | "feesUsd";
+  | "unrealizedPnlUsd";
 
 type SortDirection = "asc" | "desc";
 
@@ -23,17 +19,13 @@ type LeaderboardTableProps = {
 };
 
 const columns: Array<{ key: SortKey; label: string; align?: "right" }> = [
-  { key: "notionalValueUsd", label: "Notional value", align: "right" },
-  { key: "positions", label: "Open positions", align: "right" },
-  { key: "equityUsd", label: "Current equity", align: "right" },
-  { key: "unrealizedPnlUsd", label: "Unrealized PnL", align: "right" },
-  { key: "totalPnlUsd", label: "Total PnL", align: "right" },
-  { key: "feesUsd", label: "Fees paid", align: "right" },
-  { key: "debtValueUsd", label: "Debt value", align: "right" },
-  { key: "maxDebtRatio", label: "Max debt ratio", align: "right" },
+  { key: "notionalValueUsd", label: "Notional", align: "right" },
+  { key: "equityUsd", label: "Equity", align: "right" },
+  { key: "unrealizedPnlUsd", label: "Unrlzd PnL", align: "right" },
+  { key: "debtValueUsd", label: "Debt", align: "right" },
+  { key: "maxDebtRatio", label: "Debt ratio", align: "right" },
   { key: "ethNetExposureUsd", label: "Net ETH", align: "right" },
-  { key: "btcNetExposureUsd", label: "Net BTC", align: "right" },
-  { key: "pools", label: "Markets", align: "right" }
+  { key: "btcNetExposureUsd", label: "Net BTC", align: "right" }
 ];
 
 function formatAddress(address: string) {
@@ -46,6 +38,27 @@ function formatUsd(value: number) {
     currency: "USD",
     maximumFractionDigits: 0
   }).format(value);
+}
+
+function formatCompactUsd(value: number) {
+  const sign = value < 0 ? "-" : "";
+  const absolute = Math.abs(value);
+  if (absolute >= 1_000_000_000) return `${sign}$${(absolute / 1_000_000_000).toFixed(2).replace(/\.00$/, "")}B`;
+  if (absolute >= 1_000_000) return `${sign}$${(absolute / 1_000_000).toFixed(2).replace(/\.00$/, "")}M`;
+  if (absolute >= 1_000) return `${sign}$${Math.round(absolute / 1_000).toLocaleString()}K`;
+  return `${sign}$${Math.round(absolute).toLocaleString()}`;
+}
+
+function formatPnl(value: number, hasHistory: boolean) {
+  return hasHistory ? formatCompactUsd(value) : "—";
+}
+
+function getFeesUsd(trader: TraderSummary) {
+  return "feesUsd" in trader && typeof trader.feesUsd === "number" ? trader.feesUsd : 0;
+}
+
+function formatPositionBadge(count: number) {
+  return `${count.toLocaleString()}×`;
 }
 
 function formatPercent(value: number) {
@@ -91,8 +104,7 @@ function netExposureLabel(value: number) {
 function NetExposureCell({ longUsd, netUsd, shortUsd }: { longUsd: number; netUsd: number; shortUsd: number }) {
   return (
     <span className={netExposureTone(netUsd)} title={`Long ${formatUsd(longUsd)} / Short ${formatUsd(shortUsd)}`}>
-      <strong>{netExposureLabel(netUsd)}</strong>
-      <small>{formatUsd(Math.abs(netUsd))}</small>
+      {netExposureLabel(netUsd).replace("Net ", "")}&nbsp;{formatCompactUsd(Math.abs(netUsd))}
     </span>
   );
 }
