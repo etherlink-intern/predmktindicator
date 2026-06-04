@@ -134,7 +134,7 @@ function MarketOverviewTerminal({
         <span className="small muted" style={{ fontWeight: 600 }}>live book / indexed history</span>
       </div>
 
-      <div className="card-grid" style={{ gridTemplateColumns: "repeat(4, 1fr)" }}>
+      <div className="card-grid" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
         <article className="card-hero" style={{ gridColumn: "1" }} title="Estimated exposure across tracked active positions.">
           <p className="metric-label" style={{ marginBottom: 4 }}>Open Interest</p>
           <div className="metric-value">{formatCompactUsd(openInterestUsd)}</div>
@@ -154,7 +154,28 @@ function MarketOverviewTerminal({
             <BiasInstrumentRow label="BTC" longUsd={btcLongUsd} shortUsd={btcShortUsd} color="#f7931a" />
           </div>
         </article>
+      </div>
 
+      {/* Risk watchlist — full width below */}
+      <article className="card-hero" title={`${formatUsd(riskNotionalUsd)} above 80% debt ratio`} style={{ marginTop: 10, borderColor: riskPositions > 0 ? "rgba(245,158,11,0.30)" : undefined }}>
+        <p className="metric-label" style={{ marginBottom: 4 }}>Risk Watchlist</p>
+        <div className="metric-value">{numberFormatter.format(riskPositions)} <span className="muted small" style={{ fontWeight: 400 }}>positions at risk</span></div>
+        <div className="metric-detail">{formatCompactUsd(riskNotionalUsd)} total notional at or above 80% debt ratio · {riskShare.toFixed(1)}% of tracked OI</div>
+        {riskPositions > 0 && (
+          <div style={{ height: 6, borderRadius: 999, background: "rgba(148,163,184,0.10)", overflow: "hidden", marginTop: 8 }}>
+            <span style={{ width: `${riskShare}%`, height: "100%", background: "rgba(245,158,11,0.50)", borderRadius: 999, display: "block" }} />
+          </div>
+        )}
+      </article>
+
+      <div className="section-header" style={{ marginTop: 20 }}>
+        <div>
+          <p className="eyebrow">Debt & volume</p>
+          <h2>Additional metrics</h2>
+        </div>
+      </div>
+
+      <div className="card-grid" style={{ gridTemplateColumns: "repeat(4, 1fr)" }}>
         <article className="card-hero" title={`Tracked debt ${formatUsd(debtUsd)}`}>
           <p className="metric-label" style={{ marginBottom: 4 }}>Debt Utilization</p>
           <div className="metric-value">{formatCompactUsd(debtUsd)}</div>
@@ -163,26 +184,20 @@ function MarketOverviewTerminal({
             <span style={{ width: `${debtUtilization}%`, height: "100%", background: "rgba(56,189,248,0.50)", borderRadius: 999, display: "block" }} />
           </div>
         </article>
-
-        <article className="card-hero" title={`${formatUsd(riskNotionalUsd)} above 80% debt ratio`}>
-          <p className="metric-label" style={{ marginBottom: 4 }}>Risk Watchlist</p>
-          <div className="metric-value">{numberFormatter.format(riskPositions)}</div>
-          <div className="metric-detail">{formatCompactUsd(riskNotionalUsd)} above 80% debt ratio</div>
-        </article>
-      </div>
-
-      <div className="status-bar" style={{ marginTop: 12 }} aria-label="Secondary market status">
-        <div className="status-bar-item">
-          <span className="status-bar-label">Wallets</span>
-          <span className="status-bar-value">{numberFormatter.format(wallets)}</span>
+        <div className="card-hero">
+          <p className="metric-label" style={{ marginBottom: 4 }}>Wallets</p>
+          <div className="metric-value">{numberFormatter.format(wallets)}</div>
+          <div className="metric-detail">tracked known wallets</div>
         </div>
-        <div className="status-bar-item">
-          <span className="status-bar-label">Events</span>
-          <span className="status-bar-value">{numberFormatter.format(events)}</span>
+        <div className="card-hero">
+          <p className="metric-label" style={{ marginBottom: 4 }}>Events</p>
+          <div className="metric-value">{numberFormatter.format(events)}</div>
+          <div className="metric-detail">synced cashflows</div>
         </div>
-        <div className="status-bar-item">
-          <span className="status-bar-label">Updated</span>
-          <span className="status-bar-value">{formatTime(updatedAt)}</span>
+        <div className="card-hero">
+          <p className="metric-label" style={{ marginBottom: 4 }}>Updated</p>
+          <div className="metric-value" style={{ fontSize: 22 }}>{formatTime(updatedAt)}</div>
+          <div className="metric-detail">last position snapshot</div>
         </div>
       </div>
     </section>

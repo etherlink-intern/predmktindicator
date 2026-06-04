@@ -54,14 +54,13 @@ def load_env() -> dict[str, str]:
 
 
 ENV = load_env()
-# This host runs the local rpc-router on 127.0.0.1:18545. Prefer it for this
-# high-volume snapshot job so we do not stall on one remote provider endpoint.
+# Use dedicated Alchemy key for snapshots to avoid exhausting the shared
+# rpc-router quota. Falls back to local router if Alchemy is not configured.
 RPC = (
     ENV.get("FX_CURRENT_POSITIONS_RPC_URL")
-    or ENV.get("RPC_ROUTER_URL")
-    or "http://127.0.0.1:18545"
     or ENV.get("ALCHEMY_RPC_URL")
     or ENV.get("ETHEREUM_RPC_URL")
+    or "http://127.0.0.1:18545"
 )
 
 

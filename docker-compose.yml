@@ -112,7 +112,7 @@ services:
         apk add --no-cache curl tzdata >/dev/null
         auth_header="Authorization: Bearer $${CRON_SECRET}"
         cat > /etc/crontabs/root <<EOF_CRON
-        */30 * * * * curl -fsS -X POST "$${APP_URL}/api/jobs/snapshot-leaderboard" -H "$${auth_header}" >> /var/log/cron.log 2>&1
+        */15 * * * * curl -fsS -X POST "$${APP_URL}/api/jobs/sync-current-positions" -H "$${auth_header}" >> /var/log/cron.log 2>&1
         */30 * * * * curl -fsS -X POST "$${APP_URL}/api/jobs/sync-subgraph" -H "$${auth_header}" >> /var/log/cron.log 2>&1
         0 */2 * * * curl -fsS -X POST "$${APP_URL}/api/jobs/enrich-positions" -H "$${auth_header}" >> /var/log/cron.log 2>&1
         15 */2 * * * curl -fsS -X POST "$${APP_URL}/api/jobs/compute-trader-metrics" -H "$${auth_header}" >> /var/log/cron.log 2>&1
