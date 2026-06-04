@@ -258,19 +258,24 @@ const traderSelect = `
         when side = 'long' and entry_price_raw is not null and entry_price_raw > 0
           then collateral_value_usd * (oracle_price * 1000000000000000000 / entry_price_raw - 1)
         when side = 'short' and entry_price_raw is not null and entry_price_raw > 0
-          then debt_value_usd * (1 - entry_price_raw / (oracle_price * 1000000000000000000))
+          then debt_value_usd * (1 - oracle_price * 1000000000000000000 / entry_price_raw)
         else 0
       end
     ), 0)::float8 as "unrealizedPnlUsd",
-    coalesce(sum(
+    (coalesce(sum(
       case
         when side = 'long' and entry_price_raw is not null and entry_price_raw > 0
           then collateral_value_usd * (oracle_price * 1000000000000000000 / entry_price_raw - 1)
         when side = 'short' and entry_price_raw is not null and entry_price_raw > 0
-          then debt_value_usd * (1 - entry_price_raw / (oracle_price * 1000000000000000000))
+          then debt_value_usd * (1 - oracle_price * 1000000000000000000 / entry_price_raw)
         else 0
       end
-    ), 0)::float8 as "unrealizedPnlUsd",
+    ), 0)
+    + coalesce(sum(
+      case when side = 'short' then realized_pnl_raw / 1000000000000000000
+           else realized_pnl_raw * oracle_price / 1000000000000000000
+      end
+    ), 0))::float8 as "totalPnlUsd",
     coalesce(sum(
       case when side = 'short' then total_fees_raw / 1000000000000000000
            else total_fees_raw * oracle_price / 1000000000000000000
