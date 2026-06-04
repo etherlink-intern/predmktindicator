@@ -1,4 +1,5 @@
 import { displayInstrument, displayPool, formatDate, formatPercent, formatUsd, getDashboardData } from "../lib/fx-dashboard";
+import { LastRefreshedCounter } from "./last-refreshed";
 
 const numberFormatter = new Intl.NumberFormat("en-US");
 
@@ -16,9 +17,10 @@ function ExposureBar({
   color: string;
 }) {
   const total = longUsd + shortUsd || 1;
-  const maxWidth = longUsd > shortUsd ? longUsd : shortUsd;
-  const longPct = (longUsd / maxWidth) * 100;
-  const shortPct = (shortUsd / maxWidth) * 100;
+  const longShare = longUsd / total;
+  const shortShare = shortUsd / total;
+  const longWidth = longShare * 300;
+  const shortWidth = shortShare * 300;
   const net = longUsd - shortUsd;
   const netLabel = net > 0 ? "Net long" : net < 0 ? "Net short" : "Flat";
   const netColor = net > 0 ? "#22c55e" : net < 0 ? "#ef4444" : "#94a3b8";
@@ -158,6 +160,7 @@ export default async function HomePage() {
         Explore current f(x) Protocol positions by wallet using public on-chain data. Values are snapshot estimates
         from verified contracts and oracle prices; they are not realized profit/loss or financial advice.
       </p>
+      <LastRefreshedCounter generatedAt={dashboard.generatedAt} />
 
       <div className="card-grid">
         {snapshotCards.map(([label, value, detail]) => (
