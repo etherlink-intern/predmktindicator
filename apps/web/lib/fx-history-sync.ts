@@ -391,9 +391,18 @@ export async function computeFxPositionPnl(client: Client) {
     alter table public.fx_position_pnl add column if not exists entry_price_raw numeric;
   `);
 
-  // Step 1: Aggregate cashflows and upsert into fx_position_pnl (without entry prices)
+  // Step 1: Aggregate cashflows with entry prices from PositionSnapshot
   const result = await client.query<{ rows_upserted: string }>(`
-    with aggregate as (
+    with entry_prices as (
+      select distinct on (lower(pool_address), position_id)
+        lower(pool_address) as pool_address,
+        position_id,
+        price_raw as entry_price_raw
+      from public.fx_position_snapshots
+      where price_raw is not null and price_raw > 0
+      order by lower(pool_address), position_id, block_number asc, log_index asc
+    ),
+    aggregate as (
       select
         lower(c.pool_address) as pool_address,
         c.position_id,
@@ -406,20 +415,22 @@ export async function computeFxPositionPnl(client: Client) {
         coalesce(sum(c.debt_increase_raw - c.debt_decrease_raw), 0) as net_debt_raw,
         coalesce(sum(c.fee_raw), 0) as total_fees_raw,
         coalesce(sum(c.collateral_out_raw - c.collateral_in_raw - c.fee_raw), 0) as realized_pnl_raw,
+        e.entry_price_raw,
         min(c.block_number)::bigint as first_cashflow_block,
         max(c.block_number)::bigint as last_cashflow_block
       from public.fx_position_cashflows c
+      left join entry_prices e on lower(e.pool_address) = lower(c.pool_address) and e.position_id = c.position_id
       where c.position_id is not null
         and c.source = 'manager'
         and c.collateral_in_raw < 1000000000000000000000000
         and c.collateral_out_raw < 1000000000000000000000000
         and c.debt_increase_raw < 100000000000000000000000000000000
         and c.debt_decrease_raw < 100000000000000000000000000000000
-      group by lower(c.pool_address), c.position_id
+      group by lower(c.pool_address), c.position_id, e.entry_price_raw
     ), upserted as (
       insert into public.fx_position_pnl(
         pool_address, position_id, cashflow_event_count, collateral_in_raw, collateral_out_raw, net_collateral_raw,
-        debt_increase_raw, debt_decrease_raw, net_debt_raw, total_fees_raw, realized_pnl_raw,
+        debt_increase_raw, debt_decrease_raw, net_debt_raw, total_fees_raw, realized_pnl_raw, entry_price_raw,
         first_cashflow_block, last_cashflow_block, updated_at
       )
       select *, now() from aggregate
@@ -433,6 +444,7 @@ export async function computeFxPositionPnl(client: Client) {
         net_debt_raw = excluded.net_debt_raw,
         total_fees_raw = excluded.total_fees_raw,
         realized_pnl_raw = excluded.realized_pnl_raw,
+        entry_price_raw = coalesce(excluded.entry_price_raw, public.fx_position_pnl.entry_price_raw),
         first_cashflow_block = excluded.first_cashflow_block,
         last_cashflow_block = excluded.last_cashflow_block,
         updated_at = now()
@@ -441,64 +453,7 @@ export async function computeFxPositionPnl(client: Client) {
     select count(*)::text as rows_upserted from upserted
   `);
 
-  // Step 2: Fetch oracle entry prices via RPC for positions that have cashflows but no entry price
-  const needPrices = await client.query<{
-    pool_address: string;
-    block_number: number;
-  }>(`
-    select distinct p.pool_address, p.first_cashflow_block as block_number
-    from public.fx_position_pnl p
-    where p.entry_price_raw is null
-      and p.first_cashflow_block is not null
-  `);
-
-  if (needPrices.rows.length > 0) {
-    const rpcUrl = process.env.ALCHEMY_RPC_URL || process.env.ETHEREUM_RPC_URL || "http://127.0.0.1:18545";
-    const oracleSelector = "0x2630c12f"; // getPriceOracle()
-    const exchangePriceSelector = "0xa51ff4a2"; // getExchangePrice()
-
-    async function rpcCall(to: string, data: string, block: string): Promise<string> {
-      const body = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_call", params: [{ to, data }, block] });
-      const res = await fetch(rpcUrl, { method: "POST", headers: { "content-type": "application/json" }, body, signal: AbortSignal.timeout(15_000) });
-      const json = await res.json() as { result?: string; error?: { message?: string } };
-      if (!json.result) throw new Error(json.error?.message || "rpc failed");
-      return json.result;
-    }
-
-    // Cache oracle addresses per pool
-    const oracleCache = new Map<string, string>();
-    const blockHexCache = new Map<string, string>();
-
-    async function getOracleAddress(poolAddress: string): Promise<string> {
-      if (oracleCache.has(poolAddress)) return oracleCache.get(poolAddress)!;
-      const raw = await rpcCall(poolAddress, oracleSelector, "latest");
-      const addr = "0x" + raw.slice(-40).toLowerCase();
-      oracleCache.set(poolAddress, addr);
-      return addr;
-    }
-
-    for (const row of needPrices.rows) {
-      try {
-        const poolAddr = "0x" + row.pool_address.slice(-40).toLowerCase();
-        const oracleAddr = await getOracleAddress(poolAddr);
-        const blockNumber = Number(row.block_number);
-        const blockTag = "0x" + blockNumber.toString(16);
-        const priceRaw = await rpcCall(oracleAddr, exchangePriceSelector, blockTag);
-        const priceDecimal = BigInt(priceRaw).toString();
-
-        await client.query(
-          `update public.fx_position_pnl set entry_price_raw = $1
-           where lower(pool_address) = $2 and first_cashflow_block = $3 and entry_price_raw is null`,
-          [priceDecimal, row.pool_address, blockNumber]
-        );
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        // silently skip positions where RPC fails
-      }
-    }
-  }
-
-  // Step 3: Update current positions with PnL data
+  // Step 2: Update current positions with PnL data  // Step 3: Update current positions with PnL data
   let currentPositionsUpdated = 0;
   if (await tableExists(client, "public.fx_current_positions")) {
     await client.query(`
