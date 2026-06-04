@@ -17,7 +17,7 @@ export default async function HomePage() {
     [
       "Tracked open interest",
       formatUsd(dashboard.totals.trackedOpenInterestUsd),
-      "Same semantic family as fxprotocolstats Open Interest: xPOSITION long notional plus sPOSITION borrowed exposure, computed from our current snapshot."
+      "xPOSITION long notional plus sPOSITION borrowed exposure, computed from our current snapshot."
     ],
     [
       "xPOSITION long notional",
@@ -75,12 +75,7 @@ export default async function HomePage() {
           <h2>Position book and wallet-maintenance state</h2>
         </div>
       </div>
-      <p className="muted">
-        To avoid discrepancies with <a className="text-link" href="https://fxprotocolstats.com">fxprotocolstats.com</a>,
-        overlapping labels use the same public semantics where we can support them from our data. The open-interest
-        card is defined as xPOSITION long notional plus sPOSITION borrowed exposure; app-specific values such as current
-        equity are labeled separately and are not presented as official protocol TVL, fxUSD supply, fee revenue, or APY.
-      </p>
+
       <div className="card-grid compact">
         {globalTrackers.map(([label, value, detail]) => (
           <article className="card" key={label}>

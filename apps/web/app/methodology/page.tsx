@@ -168,7 +168,7 @@ export default function MethodologyPage() {
         <article className="card">
           <h2>Global parity</h2>
           <p className="muted">
-            Homepage global trackers only reuse fxprotocolstats-style labels when the formula matches. Open interest is
+            Homepage global trackers define open interest as
             xPOSITION long notional plus sPOSITION borrowed exposure; current equity remains an app-specific snapshot
             metric.
           </p>
