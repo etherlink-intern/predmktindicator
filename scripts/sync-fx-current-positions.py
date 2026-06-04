@@ -19,6 +19,7 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
+from decimal import Decimal, getcontext
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -26,6 +27,11 @@ ENV_PATH = ROOT / ".env"
 NEXT_ID = "0x067f4ddd"
 GET_POSITION = "0xeb02c301"
 OWNER_OF = "0x6352211e"
+PRICE_ORACLE = "0x2630c12f"
+GET_EXCHANGE_PRICE = "0xa51ff4a2"
+GET_POSITION_DEBT_RATIO = "0x861b4cfe"
+WAD = Decimal(10) ** 18
+getcontext().prec = 80
 POOLS = {
     "WstETHLongPool": ("0x6Ecfa38FeE8a5277B91eFdA204c235814F0122E8", "long", "wstETH"),
     "WBTCLongPool": ("0xAB709e26Fa6B0A30c119D8c55B887DeD24952473", "long", "WBTC"),
@@ -113,6 +119,54 @@ def decode_owner(result: str | None) -> str | None:
     return "0x" + result[-40:].lower()
 
 
+def decode_address(result: str | None) -> str | None:
+    if not result or result == "0x" or len(result) < 66:
+        return None
+    return "0x" + result[-40:].lower()
+
+
+def decode_uint(result: str | None) -> int | None:
+    if not result or result == "0x":
+        return None
+    return int(result, 16)
+
+
+def decimal_string(value: Decimal, places: int = 18) -> str:
+    quant = Decimal(1).scaleb(-places)
+    return format(value.quantize(quant), "f")
+
+
+def get_pool_price(address: str) -> Decimal:
+    oracle = decode_address(eth_call(address, PRICE_ORACLE))
+    if not oracle:
+        raise RuntimeError(f"could not decode price oracle for {address}")
+    price = decode_uint(eth_call(oracle, GET_EXCHANGE_PRICE))
+    if price is None or price == 0:
+        raise RuntimeError(f"could not decode exchange price for {address} via {oracle}")
+    return Decimal(price) / WAD
+
+
+def position_valuation(side: str, raw_collateral: int, raw_debt: int, price: Decimal) -> tuple[Decimal, Decimal, Decimal]:
+    """Return current collateral value, debt value, and equity in USD-like units.
+
+    Long pools use collateral-token/USD price, so collateral value is
+    rawCollateral * price and debt is fxUSD. Short pools use inverse oracle
+    price (collateral-token per USD); their collateral is fxUSD-like and debt
+    is the underlying collateral token, so debt value is rawDebt / price.
+
+    This is current mark-to-oracle equity, not realized historical PnL.
+    """
+    collateral_amount = Decimal(raw_collateral) / WAD
+    debt_amount = Decimal(raw_debt) / WAD
+    if side == "long":
+        collateral_value = collateral_amount * price
+        debt_value = debt_amount
+    else:
+        collateral_value = collateral_amount
+        debt_value = debt_amount / price
+    return collateral_value, debt_value, collateral_value - debt_value
+
+
 def retry_position_call(address: str, token_id: int) -> tuple[int, int] | None:
     """Retry one getPosition call outside the batch path.
 
@@ -131,9 +185,10 @@ def retry_position_call(address: str, token_id: int) -> tuple[int, int] | None:
 def scan_positions(csv_path: Path) -> int:
     rows: list[dict[str, str]] = []
     for pool_name, (address, side, collateral) in POOLS.items():
+        price = get_pool_price(address)
         next_id = int(eth_call(address, NEXT_ID), 16)
         token_ids = list(range(1, next_id))
-        print(f"scanning {pool_name}: {len(token_ids)} candidate ids", flush=True)
+        print(f"scanning {pool_name}: {len(token_ids)} candidate ids price={decimal_string(price, 12)}", flush=True)
         calls = [(f"{pool_name}:pos:{token_id}", address, GET_POSITION + word(token_id)) for token_id in token_ids]
         position_results = batch_eth_call(calls, batch_size=20)
         nonzero: list[tuple[int, int, int]] = []
@@ -157,6 +212,9 @@ def scan_positions(csv_path: Path) -> int:
             owner = None if not isinstance(response, dict) or "error" in response else decode_owner(response.get("result"))
             if not owner:
                 continue
+            debt_ratio_raw = decode_uint(eth_call(address, GET_POSITION_DEBT_RATIO + word(token_id)))
+            debt_ratio = Decimal(debt_ratio_raw or 0) / WAD
+            collateral_value, debt_value, equity = position_valuation(side, raw_collateral, raw_debt, price)
             owner_confirmed += 1
             rows.append(
                 {
@@ -168,16 +226,33 @@ def scan_positions(csv_path: Path) -> int:
                     "owner": owner,
                     "raw_collateral": str(raw_collateral),
                     "raw_debt": str(raw_debt),
+                    "oracle_price": decimal_string(price),
+                    "collateral_value_usd": decimal_string(collateral_value, 12),
+                    "debt_value_usd": decimal_string(debt_value, 12),
+                    "equity_usd": decimal_string(equity, 12),
+                    "debt_ratio": decimal_string(debt_ratio),
                 }
             )
             time.sleep(0.02)
         print(f"  nonzero={len(nonzero)} owner_confirmed={owner_confirmed} retried_positions={retried}", flush=True)
 
     with csv_path.open("w", newline="") as handle:
-        writer = csv.DictWriter(
-            handle,
-            fieldnames=["pool_name", "pool_address", "side", "collateral", "token_id", "owner", "raw_collateral", "raw_debt"],
-        )
+        fieldnames = [
+            "pool_name",
+            "pool_address",
+            "side",
+            "collateral",
+            "token_id",
+            "owner",
+            "raw_collateral",
+            "raw_debt",
+            "oracle_price",
+            "collateral_value_usd",
+            "debt_value_usd",
+            "equity_usd",
+            "debt_ratio",
+        ]
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(rows)
     return len(rows)
@@ -206,12 +281,23 @@ create table if not exists public.fx_current_positions (
   owner text not null,
   raw_collateral numeric(78,0) not null,
   raw_debt numeric(78,0) not null,
+  oracle_price numeric(78,18),
+  collateral_value_usd numeric(78,18),
+  debt_value_usd numeric(78,18),
+  equity_usd numeric(78,18),
+  debt_ratio numeric(78,18),
   updated_at timestamptz not null default now(),
   primary key (pool_address, token_id)
 );
 
+alter table public.fx_current_positions add column if not exists oracle_price numeric(78,18);
+alter table public.fx_current_positions add column if not exists collateral_value_usd numeric(78,18);
+alter table public.fx_current_positions add column if not exists debt_value_usd numeric(78,18);
+alter table public.fx_current_positions add column if not exists equity_usd numeric(78,18);
+alter table public.fx_current_positions add column if not exists debt_ratio numeric(78,18);
+
 truncate table public.fx_current_positions;
-\copy public.fx_current_positions(pool_name, pool_address, side, collateral, token_id, owner, raw_collateral, raw_debt) from '/tmp/fx_current_positions.csv' with (format csv, header true)
+\copy public.fx_current_positions(pool_name, pool_address, side, collateral, token_id, owner, raw_collateral, raw_debt, oracle_price, collateral_value_usd, debt_value_usd, equity_usd, debt_ratio) from '/tmp/fx_current_positions.csv' with (format csv, header true)
 insert into public.fx_current_position_syncs(source) values ('live_rpc_snapshot');
 
 create index if not exists fx_current_positions_owner_idx on public.fx_current_positions(owner);

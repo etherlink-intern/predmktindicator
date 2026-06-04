@@ -1,4 +1,4 @@
-import { formatAddress, formatDate, getDashboardData } from "../../lib/fx-dashboard";
+import { formatAddress, formatDate, formatPercent, formatUsd, getDashboardData } from "../../lib/fx-dashboard";
 
 const numberFormatter = new Intl.NumberFormat("en-US");
 
@@ -12,7 +12,8 @@ export default async function LeaderboardPage() {
       <p className="eyebrow">Leaderboard</p>
       <h1>Trader leaderboard</h1>
       <p className="muted">
-        Top wallets by owner-confirmed open f(x) position count. Snapshot: {formatDate(dashboard.generatedAt)}.
+        Top wallets by owner-confirmed open f(x) position count. Equity, debt, and debt ratio are current
+        blockchain-derived marks from pool/oracle calls, not the external f(x) web leaderboard. Snapshot: {formatDate(dashboard.generatedAt)}.
       </p>
 
       <div className="card-grid compact">
@@ -25,8 +26,8 @@ export default async function LeaderboardPage() {
           <h2>{numberFormatter.format(dashboard.totals.uniqueTraders)}</h2>
         </article>
         <article className="card">
-          <p className="muted">Long / short</p>
-          <h2>{numberFormatter.format(dashboard.totals.longPositions)} / {numberFormatter.format(dashboard.totals.shortPositions)}</h2>
+          <p className="muted">Current net equity</p>
+          <h2>{formatUsd(dashboard.totals.equityUsd)}</h2>
         </article>
       </div>
 
@@ -38,10 +39,10 @@ export default async function LeaderboardPage() {
               <th>Wallet</th>
               <th>Open positions</th>
               <th>Pools</th>
-              <th>wstETH long</th>
-              <th>WBTC long</th>
-              <th>wstETH short</th>
-              <th>WBTC short</th>
+              <th>Current equity</th>
+              <th>Debt value</th>
+              <th>Max debt ratio</th>
+              <th>Breakdown</th>
             </tr>
           </thead>
           <tbody>
@@ -53,10 +54,12 @@ export default async function LeaderboardPage() {
                 </td>
                 <td>{numberFormatter.format(trader.positions)}</td>
                 <td>{numberFormatter.format(trader.pools)}</td>
-                <td>{numberFormatter.format(trader.wstethLong)}</td>
-                <td>{numberFormatter.format(trader.wbtcLong)}</td>
-                <td>{numberFormatter.format(trader.wstethShort)}</td>
-                <td>{numberFormatter.format(trader.wbtcShort)}</td>
+                <td>{formatUsd(trader.equityUsd)}</td>
+                <td>{formatUsd(trader.debtValueUsd)}</td>
+                <td>{formatPercent(trader.maxDebtRatio)}</td>
+                <td className="muted small">
+                  WL {trader.wstethLong} · BL {trader.wbtcLong} · WS {trader.wstethShort} · BS {trader.wbtcShort}
+                </td>
               </tr>
             ))}
           </tbody>

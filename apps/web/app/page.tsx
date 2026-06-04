@@ -1,4 +1,4 @@
-import { formatDate, getDashboardData } from "../lib/fx-dashboard";
+import { formatDate, formatPercent, formatUsd, getDashboardData } from "../lib/fx-dashboard";
 
 const numberFormatter = new Intl.NumberFormat("en-US");
 
@@ -9,7 +9,7 @@ export default async function HomePage() {
   const cards = [
     ["Open positions", numberFormatter.format(dashboard.totals.openPositions)],
     ["Unique traders", numberFormatter.format(dashboard.totals.uniqueTraders)],
-    ["Tracked pools", `${dashboard.totals.pools}/4`],
+    ["Net current equity", formatUsd(dashboard.totals.equityUsd)],
     ["Snapshot freshness", formatDate(dashboard.generatedAt)]
   ];
 
@@ -19,7 +19,9 @@ export default async function HomePage() {
       <h1>Live f(x) trader profiles</h1>
       <p className="muted">
         Current-position dashboard built from the verified f(x) position-pool contracts. The snapshot scans every
-        position ID with <code>getPosition</code> and confirms owners with <code>ownerOf</code>.
+        position ID with <code>getPosition</code>, confirms owners with <code>ownerOf</code>, and values positions from live
+        pool oracle prices. Realized historical PnL is intentionally not shown until manager events are indexed from
+        chain.
       </p>
 
       <div className="card-grid">
@@ -54,7 +56,10 @@ export default async function HomePage() {
                   <th>Side</th>
                   <th>Collateral</th>
                   <th>Open positions</th>
-                  <th>Unique owners</th>
+                  <th>Owners</th>
+                  <th>Current equity</th>
+                  <th>Debt value</th>
+                  <th>Avg debt ratio</th>
                 </tr>
               </thead>
               <tbody>
@@ -65,6 +70,9 @@ export default async function HomePage() {
                     <td>{pool.collateral}</td>
                     <td>{numberFormatter.format(pool.positions)}</td>
                     <td>{numberFormatter.format(pool.uniqueOwners)}</td>
+                    <td>{formatUsd(pool.equityUsd)}</td>
+                    <td>{formatUsd(pool.debtValueUsd)}</td>
+                    <td>{formatPercent(pool.avgDebtRatio)}</td>
                   </tr>
                 ))}
               </tbody>

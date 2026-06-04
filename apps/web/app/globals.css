@@ -130,6 +130,14 @@ tr:last-child td {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
 }
 
+.wrap {
+  overflow-wrap: anywhere;
+}
+
+.small {
+  font-size: 0.8rem;
+}
+
 .eyebrow {
   color: var(--accent);
   font-size: 12px;
