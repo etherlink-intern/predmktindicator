@@ -221,6 +221,10 @@ tr:last-child td {
   min-width: 160px;
 }
 
+.dash {
+  color: var(--muted);
+}
+
 .instrument-pill {
   border: 1px solid rgba(148, 163, 184, 0.22);
   border-radius: 999px;
@@ -229,6 +233,35 @@ tr:last-child td {
   padding: 2px 6px;
   white-space: nowrap;
 }
+
+.pill-split {
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 11px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.pill-split .pill-asset,
+.pill-split .pill-side {
+  padding: 2px 6px;
+}
+
+.pill-split .pill-asset {
+  font-weight: 700;
+}
+
+.pill-eth-long .pill-asset { background: #627eea; color: #fff; }
+.pill-eth-long .pill-side  { background: #22c55e; color: #052e16; }
+
+.pill-eth-short .pill-asset { background: #627eea; color: #fff; }
+.pill-eth-short .pill-side  { background: #ef4444; color: #450a0a; }
+
+.pill-btc-long .pill-asset { background: #f7931a; color: #1a0e00; }
+.pill-btc-long .pill-side  { background: #22c55e; color: #052e16; }
+
+.pill-btc-short .pill-asset { background: #f7931a; color: #1a0e00; }
+.pill-btc-short .pill-side  { background: #ef4444; color: #450a0a; }
 
 .leaderboard-table {
   min-width: 1100px;

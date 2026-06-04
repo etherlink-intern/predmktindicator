@@ -69,6 +69,13 @@ function rowsFromRunSql(result: string[][]) {
   return rows.map((row) => Object.fromEntries(headers.map((header, index) => [header, row[index] ?? null])));
 }
 
+function nullSafe(value: string | null | undefined): string | null {
+  if (value === null || value === undefined) return null;
+  const trimmed = value.trim();
+  if (trimmed === "" || trimmed === "NULL" || trimmed === "null") return null;
+  return trimmed;
+}
+
 async function findSourceTable(candidates: string[]) {
   for (const candidate of candidates) {
     const result = await runHasuraSql(`select to_regclass('${escapeSqlLiteral(candidate)}')::text as table_name`);
@@ -185,13 +192,13 @@ async function syncTransfers(client: Client, table: string | null) {
         row.id,
         row.contract_id,
         row.pool,
-        row.tokenId,
+        nullSafe(row.tokenId),
         row.from,
         row.to,
-        row.blockNumber,
-        row.blockTimestamp,
+        nullSafe(row.blockNumber),
+        nullSafe(row.blockTimestamp),
         row.transactionHash,
-        row.logIndex,
+        nullSafe(row.logIndex),
       ],
     );
   }
@@ -251,22 +258,22 @@ async function syncCashflows(client: Client, table: string | null) {
         row.pool,
         row.user,
         row.recipient,
-        row.positionId,
-        row.deltaColls,
-        row.deltaDebts,
-        row.collateralInRaw,
-        row.collateralOutRaw,
-        row.debtIncreaseRaw,
-        row.debtDecreaseRaw,
-        row.feeRaw,
-        row.colls,
-        row.debts,
-        row.borrows,
-        row.blockNumber,
-        row.blockTimestamp,
+        nullSafe(row.positionId),
+        nullSafe(row.deltaColls),
+        nullSafe(row.deltaDebts),
+        nullSafe(row.collateralInRaw),
+        nullSafe(row.collateralOutRaw),
+        nullSafe(row.debtIncreaseRaw),
+        nullSafe(row.debtDecreaseRaw),
+        nullSafe(row.feeRaw),
+        nullSafe(row.colls),
+        nullSafe(row.debts),
+        nullSafe(row.borrows),
+        nullSafe(row.blockNumber),
+        nullSafe(row.blockTimestamp),
         row.transactionHash,
         row.transactionFrom,
-        row.logIndex,
+        nullSafe(row.logIndex),
       ],
     );
 
@@ -314,15 +321,15 @@ async function syncSnapshots(client: Client, table: string | null) {
         row.id,
         row.contract_id,
         row.pool,
-        row.positionId,
-        row.tick,
-        row.collShares,
-        row.debtShares,
-        row.price,
-        row.blockNumber,
-        row.blockTimestamp,
+        nullSafe(row.positionId),
+        nullSafe(row.tick),
+        nullSafe(row.collShares),
+        nullSafe(row.debtShares),
+        nullSafe(row.price),
+        nullSafe(row.blockNumber),
+        nullSafe(row.blockTimestamp),
         row.transactionHash,
-        row.logIndex,
+        nullSafe(row.logIndex),
       ],
     );
   }
@@ -373,36 +380,55 @@ export async function computeFxPositionPnl(client: Client) {
       net_debt_raw numeric not null default 0,
       total_fees_raw numeric not null default 0,
       realized_pnl_raw numeric not null default 0,
+      entry_price_raw numeric,
       first_cashflow_block bigint,
       last_cashflow_block bigint,
       updated_at timestamptz not null default now(),
       primary key (pool_address, position_id)
     );
   `);
+  await client.query(`
+    alter table public.fx_position_pnl add column if not exists entry_price_raw numeric;
+  `);
 
   const result = await client.query<{ rows_upserted: string }>(`
-    with aggregate as (
-      select
+    with entry_prices as (
+      select distinct on (lower(pool_address), position_id)
         lower(pool_address) as pool_address,
         position_id,
+        price_raw as entry_price_raw
+      from public.fx_position_snapshots
+      where price_raw is not null and price_raw > 0
+      order by lower(pool_address), position_id, block_number asc, log_index asc
+    ),
+    aggregate as (
+      select
+        lower(c.pool_address) as pool_address,
+        c.position_id,
         count(*)::int as cashflow_event_count,
-        coalesce(sum(collateral_in_raw), 0) as collateral_in_raw,
-        coalesce(sum(collateral_out_raw), 0) as collateral_out_raw,
-        coalesce(sum(collateral_out_raw - collateral_in_raw), 0) as net_collateral_raw,
-        coalesce(sum(debt_increase_raw), 0) as debt_increase_raw,
-        coalesce(sum(debt_decrease_raw), 0) as debt_decrease_raw,
-        coalesce(sum(debt_increase_raw - debt_decrease_raw), 0) as net_debt_raw,
-        coalesce(sum(fee_raw), 0) as total_fees_raw,
-        coalesce(sum(collateral_out_raw - collateral_in_raw - fee_raw), 0) as realized_pnl_raw,
-        min(block_number)::bigint as first_cashflow_block,
-        max(block_number)::bigint as last_cashflow_block
-      from public.fx_position_cashflows
-      where position_id is not null
-      group by lower(pool_address), position_id
+        coalesce(sum(c.collateral_in_raw), 0) as collateral_in_raw,
+        coalesce(sum(c.collateral_out_raw), 0) as collateral_out_raw,
+        coalesce(sum(c.collateral_out_raw - c.collateral_in_raw), 0) as net_collateral_raw,
+        coalesce(sum(c.debt_increase_raw), 0) as debt_increase_raw,
+        coalesce(sum(c.debt_decrease_raw), 0) as debt_decrease_raw,
+        coalesce(sum(c.debt_increase_raw - c.debt_decrease_raw), 0) as net_debt_raw,
+        coalesce(sum(c.fee_raw), 0) as total_fees_raw,
+        coalesce(sum(c.collateral_out_raw - c.collateral_in_raw - c.fee_raw), 0) as realized_pnl_raw,
+        e.entry_price_raw,
+        min(c.block_number)::bigint as first_cashflow_block,
+        max(c.block_number)::bigint as last_cashflow_block
+      from public.fx_position_cashflows c
+      left join entry_prices e on lower(e.pool_address) = lower(c.pool_address) and e.position_id = c.position_id
+      where c.position_id is not null
+        and c.collateral_in_raw < 1000000000000000000000000
+        and c.collateral_out_raw < 1000000000000000000000000
+        and c.debt_increase_raw < 100000000000000000000000000000000
+        and c.debt_decrease_raw < 100000000000000000000000000000000
+      group by lower(c.pool_address), c.position_id, e.entry_price_raw
     ), upserted as (
       insert into public.fx_position_pnl(
         pool_address, position_id, cashflow_event_count, collateral_in_raw, collateral_out_raw, net_collateral_raw,
-        debt_increase_raw, debt_decrease_raw, net_debt_raw, total_fees_raw, realized_pnl_raw,
+        debt_increase_raw, debt_decrease_raw, net_debt_raw, total_fees_raw, realized_pnl_raw, entry_price_raw,
         first_cashflow_block, last_cashflow_block, updated_at
       )
       select *, now() from aggregate
@@ -416,6 +442,7 @@ export async function computeFxPositionPnl(client: Client) {
         net_debt_raw = excluded.net_debt_raw,
         total_fees_raw = excluded.total_fees_raw,
         realized_pnl_raw = excluded.realized_pnl_raw,
+        entry_price_raw = coalesce(excluded.entry_price_raw, public.fx_position_pnl.entry_price_raw),
         first_cashflow_block = excluded.first_cashflow_block,
         last_cashflow_block = excluded.last_cashflow_block,
         updated_at = now()
@@ -431,6 +458,7 @@ export async function computeFxPositionPnl(client: Client) {
         add column if not exists cashflow_event_count integer not null default 0,
         add column if not exists realized_pnl_raw numeric not null default 0,
         add column if not exists total_fees_raw numeric not null default 0,
+        add column if not exists entry_price_raw numeric,
         add column if not exists last_cashflow_block bigint;
     `);
     const updateResult = await client.query(`
@@ -438,6 +466,7 @@ export async function computeFxPositionPnl(client: Client) {
       set cashflow_event_count = h.cashflow_event_count,
           realized_pnl_raw = h.realized_pnl_raw,
           total_fees_raw = h.total_fees_raw,
+          entry_price_raw = coalesce(h.entry_price_raw, p.entry_price_raw),
           last_cashflow_block = h.last_cashflow_block
       from public.fx_position_pnl h
       where lower(p.pool_address) = lower(h.pool_address)

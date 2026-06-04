@@ -11,7 +11,9 @@ type SortKey =
   | "maxDebtRatio"
   | "ethNetExposureUsd"
   | "btcNetExposureUsd"
-  | "pools";
+  | "pools"
+  | "unrealizedPnlUsd"
+  | "totalPnlUsd";
 type SortDirection = "asc" | "desc";
 
 type LeaderboardTableProps = {
@@ -22,6 +24,8 @@ const columns: Array<{ key: SortKey; label: string; align?: "right" }> = [
   { key: "notionalValueUsd", label: "Notional value", align: "right" },
   { key: "positions", label: "Open positions", align: "right" },
   { key: "equityUsd", label: "Current equity", align: "right" },
+  { key: "unrealizedPnlUsd", label: "Unrealized PnL", align: "right" },
+  { key: "totalPnlUsd", label: "Total PnL", align: "right" },
   { key: "debtValueUsd", label: "Debt value", align: "right" },
   { key: "maxDebtRatio", label: "Max debt ratio", align: "right" },
   { key: "ethNetExposureUsd", label: "Net ETH", align: "right" },
@@ -62,13 +66,13 @@ function riskTone(debtRatio: number) {
   return "risk-cell normal";
 }
 
-function instrumentBreakdown(trader: TraderSummary) {
+function instrumentBreakdown(trader: TraderSummary): Array<{ asset: string; side: string; count: number; pillClass: string }> {
   return [
-    ["ETH Long", trader.wstethLong],
-    ["ETH Short", trader.wstethShort],
-    ["BTC Long", trader.wbtcLong],
-    ["BTC Short", trader.wbtcShort]
-  ].filter(([, count]) => Number(count) > 0);
+    { asset: "ETH", side: "Long", count: trader.wstethLong, pillClass: "pill-split pill-eth-long" },
+    { asset: "ETH", side: "Short", count: trader.wstethShort, pillClass: "pill-split pill-eth-short" },
+    { asset: "BTC", side: "Long", count: trader.wbtcLong, pillClass: "pill-split pill-btc-long" },
+    { asset: "BTC", side: "Short", count: trader.wbtcShort, pillClass: "pill-split pill-btc-short" }
+  ].filter((item) => item.count > 0);
 }
 
 function netExposureTone(value: number) {
@@ -94,7 +98,7 @@ export function LeaderboardTable({ traders }: LeaderboardTableProps) {
   const [sortKey, setSortKey] = useState<SortKey>("notionalValueUsd");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [minPositions, setMinPositions] = useState("1");
-  const [minNotional, setMinNotional] = useState("");
+  const [minNotional, setMinNotional] = useState("100");
 
   const filtered = useMemo(() => {
     const positionFloor = parseNumber(minPositions);
@@ -185,6 +189,8 @@ export function LeaderboardTable({ traders }: LeaderboardTableProps) {
                   <td className="numeric">{formatUsd(trader.notionalValueUsd)}</td>
                   <td className="numeric">{trader.positions.toLocaleString()}</td>
                   <td className="numeric">{formatUsd(trader.equityUsd)}</td>
+                  <td className="numeric">{trader.hasPositionHistory ? formatUsd(trader.unrealizedPnlUsd) : "—"}</td>
+                  <td className="numeric">{trader.hasPositionHistory ? formatUsd(trader.totalPnlUsd) : "—"}</td>
                   <td className="numeric">{formatUsd(trader.debtValueUsd)}</td>
                   <td className="numeric">
                     <span className={riskTone(trader.maxDebtRatio)}>
@@ -208,9 +214,10 @@ export function LeaderboardTable({ traders }: LeaderboardTableProps) {
                   </td>
                   <td className="numeric">{trader.pools.toLocaleString()}</td>
                   <td className="instrument-list">
-                    {instrumentBreakdown(trader).map(([label, count]) => (
-                      <span className="instrument-pill" key={label}>
-                        {label}: {Number(count).toLocaleString()}
+                    {instrumentBreakdown(trader).map((item) => (
+                      <span className={item.pillClass} key={`${item.asset}-${item.side}`}>
+                        <span className="pill-asset">{item.asset}</span>
+                        <span className="pill-side">{item.side} {item.count.toLocaleString()}</span>
                       </span>
                     ))}
                   </td>

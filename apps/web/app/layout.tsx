@@ -18,6 +18,16 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
             <a href="/privacy">Privacy</a>
           </nav>
           {children}
+          <footer style={{
+            marginTop: "64px",
+            paddingTop: "24px",
+            borderTop: "1px solid rgba(148, 163, 184, 0.16)",
+            textAlign: "center",
+            color: "var(--muted)",
+            fontSize: "13px"
+          }}>
+            <p>Tofu Zebra Labs — building transparent on-chain tools</p>
+          </footer>
         </main>
       </body>
     </html>

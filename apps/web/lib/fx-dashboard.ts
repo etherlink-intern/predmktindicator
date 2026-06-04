@@ -41,6 +41,9 @@ export type TraderSummary = {
   equityUsd: number;
   avgDebtRatio: number;
   maxDebtRatio: number;
+  unrealizedPnlUsd: number;
+  totalPnlUsd: number;
+  hasPositionHistory: boolean;
 };
 
 export type PositionSummary = {
@@ -171,7 +174,10 @@ function mapTrader(row: Record<string, unknown>): TraderSummary {
     debtValueUsd: toNumber(row.debtValueUsd),
     equityUsd: toNumber(row.equityUsd),
     avgDebtRatio: toNumber(row.avgDebtRatio),
-    maxDebtRatio: toNumber(row.maxDebtRatio)
+    maxDebtRatio: toNumber(row.maxDebtRatio),
+    unrealizedPnlUsd: toNumber(row.unrealizedPnlUsd),
+    totalPnlUsd: toNumber(row.totalPnlUsd),
+    hasPositionHistory: Boolean(row.hasPositionHistory)
   };
 }
 
@@ -225,7 +231,26 @@ const traderSelect = `
     coalesce(sum(debt_value_usd), 0)::float8 as "debtValueUsd",
     coalesce(sum(equity_usd), 0)::float8 as "equityUsd",
     coalesce(avg(debt_ratio), 0)::float8 as "avgDebtRatio",
-    coalesce(max(debt_ratio), 0)::float8 as "maxDebtRatio"
+    coalesce(max(debt_ratio), 0)::float8 as "maxDebtRatio",
+    coalesce(sum(
+      case
+        when side = 'long' and entry_price_raw is not null and entry_price_raw > 0
+          then collateral_value_usd * (oracle_price * 1000000000000000000 / entry_price_raw - 1)
+        when side = 'short' and entry_price_raw is not null and entry_price_raw > 0
+          then debt_value_usd * (1 - oracle_price * 1000000000000000000 / entry_price_raw)
+        else 0
+      end
+    ), 0)::float8 as "unrealizedPnlUsd",
+    coalesce(sum(
+      case
+        when side = 'long' and entry_price_raw is not null and entry_price_raw > 0
+          then collateral_value_usd * (oracle_price * 1000000000000000000 / entry_price_raw - 1)
+        when side = 'short' and entry_price_raw is not null and entry_price_raw > 0
+          then debt_value_usd * (1 - oracle_price * 1000000000000000000 / entry_price_raw)
+        else 0
+      end
+    ), 0)::float8 + coalesce(sum(realized_pnl_raw * oracle_price / 1000000000000000000), 0)::float8 as "totalPnlUsd",
+    coalesce(bool_or(entry_price_raw is not null and entry_price_raw > 0), false) or coalesce(bool_or(realized_pnl_raw != 0), false) as "hasPositionHistory"
   from public.fx_current_positions
 `;
 

@@ -54,7 +54,15 @@ def load_env() -> dict[str, str]:
 
 
 ENV = load_env()
-RPC = ENV.get("ALCHEMY_RPC_URL") or ENV.get("ETHEREUM_RPC_URL") or "http://127.0.0.1:18545"
+# This host runs the local rpc-router on 127.0.0.1:18545. Prefer it for this
+# high-volume snapshot job so we do not stall on one remote provider endpoint.
+RPC = (
+    ENV.get("FX_CURRENT_POSITIONS_RPC_URL")
+    or ENV.get("RPC_ROUTER_URL")
+    or "http://127.0.0.1:18545"
+    or ENV.get("ALCHEMY_RPC_URL")
+    or ENV.get("ETHEREUM_RPC_URL")
+)
 
 
 def rpc_post(payload: object, timeout: int = 60) -> object:
@@ -85,20 +93,40 @@ def eth_call(to: str, data: str) -> str:
 
 def batch_eth_call(calls: list[tuple[str, str, str]], batch_size: int = 20) -> dict[str, dict]:
     output: dict[str, dict] = {}
-    for index in range(0, len(calls), batch_size):
-        chunk = calls[index : index + batch_size]
+
+    def run_chunk(chunk: list[tuple[str, str, str]]) -> None:
         payload = [
             {"jsonrpc": "2.0", "id": call_id, "method": "eth_call", "params": [{"to": to, "data": data}, "latest"]}
             for call_id, to, data in chunk
         ]
-        result = rpc_post(payload, timeout=90)
+        try:
+            result = rpc_post(payload, timeout=90)
+        except Exception as exc:  # noqa: BLE001 - split flaky provider batches before giving up
+            if len(chunk) > 1:
+                midpoint = len(chunk) // 2
+                run_chunk(chunk[:midpoint])
+                run_chunk(chunk[midpoint:])
+                return
+            call_id, _, _ = chunk[0]
+            output[call_id] = {"id": call_id, "error": str(exc)}
+            return
         if isinstance(result, dict):
             result = [result]
         if not isinstance(result, list):
-            raise RuntimeError(f"unexpected batch response: {result!r}")
+            if len(chunk) > 1:
+                midpoint = len(chunk) // 2
+                run_chunk(chunk[:midpoint])
+                run_chunk(chunk[midpoint:])
+                return
+            call_id, _, _ = chunk[0]
+            output[call_id] = {"id": call_id, "error": f"unexpected batch response: {result!r}"}
+            return
         for item in result:
             output[str(item["id"])] = item
         time.sleep(0.2)
+
+    for index in range(0, len(calls), batch_size):
+        run_chunk(calls[index : index + batch_size])
     return output
 
 
@@ -205,14 +233,21 @@ def scan_positions(csv_path: Path) -> int:
             if raw_collateral != 0 or raw_debt != 0:
                 nonzero.append((token_id, raw_collateral, raw_debt))
         owner_confirmed = 0
+        owner_calls = [(f"{pool_name}:owner:{token_id}", address, OWNER_OF + word(token_id)) for token_id, _, _ in nonzero]
+        debt_ratio_calls = [
+            (f"{pool_name}:debt_ratio:{token_id}", address, GET_POSITION_DEBT_RATIO + word(token_id))
+            for token_id, _, _ in nonzero
+        ]
+        owner_results = batch_eth_call(owner_calls, batch_size=50)
+        debt_ratio_results = batch_eth_call(debt_ratio_calls, batch_size=50)
+
         for token_id, raw_collateral, raw_debt in nonzero:
-            response = rpc_post(
-                {"jsonrpc": "2.0", "id": 1, "method": "eth_call", "params": [{"to": address, "data": OWNER_OF + word(token_id)}, "latest"]}
-            )
-            owner = None if not isinstance(response, dict) or "error" in response else decode_owner(response.get("result"))
+            owner_item = owner_results.get(f"{pool_name}:owner:{token_id}", {})
+            owner = None if "error" in owner_item else decode_owner(owner_item.get("result"))
             if not owner:
                 continue
-            debt_ratio_raw = decode_uint(eth_call(address, GET_POSITION_DEBT_RATIO + word(token_id)))
+            debt_ratio_item = debt_ratio_results.get(f"{pool_name}:debt_ratio:{token_id}", {})
+            debt_ratio_raw = None if "error" in debt_ratio_item else decode_uint(debt_ratio_item.get("result"))
             debt_ratio = Decimal(debt_ratio_raw or 0) / WAD
             collateral_value, debt_value, equity = position_valuation(side, raw_collateral, raw_debt, price)
             owner_confirmed += 1
@@ -233,7 +268,6 @@ def scan_positions(csv_path: Path) -> int:
                     "debt_ratio": decimal_string(debt_ratio),
                 }
             )
-            time.sleep(0.02)
         print(f"  nonzero={len(nonzero)} owner_confirmed={owner_confirmed} retried_positions={retried}", flush=True)
 
     with csv_path.open("w", newline="") as handle:
