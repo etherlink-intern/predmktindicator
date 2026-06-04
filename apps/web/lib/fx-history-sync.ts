@@ -14,9 +14,97 @@ type SyncResult = {
   transfers: number;
   cashflows: number;
   snapshots: number;
+  officialPositions: number;
+  officialOrders: number;
   walletsSeeded: number;
   sourceTables: Record<string, string | null>;
 };
+
+type OfficialPoolConfig = {
+  key: string;
+  endpoint: string;
+  poolAddress: string;
+  poolName: string;
+  side: "long" | "short";
+  collateral: "wstETH" | "WBTC";
+  precision: number;
+};
+
+type OfficialPosition = {
+  id: string;
+  owner: string;
+  realOwner?: string | null;
+  isClosed: boolean;
+  price?: string | null;
+  priceRate?: string | null;
+  debts?: string | null;
+  colls?: string | null;
+  blockNumber?: string | null;
+  timestamp?: string | null;
+  targetLeverage?: string | null;
+  orders?: OfficialOrder[];
+};
+
+type OfficialOrder = {
+  id: string;
+  type: string;
+  deltaColls?: string | null;
+  deltaDebts?: string | null;
+  execPrice?: string | null;
+  logIndex?: string | null;
+  positionColls?: string | null;
+  positionDebts?: string | null;
+  oldPositionColls?: string | null;
+  oldPositionDebts?: string | null;
+  price?: string | null;
+  priceRate?: string | null;
+  protocolFees?: string | null;
+  hash?: string | null;
+  timestamp?: string | null;
+  blockNumber?: string | null;
+  positionCollIndex?: string | null;
+  positionDebtIndex?: string | null;
+  tickMovement?: { price?: string | null; type?: string | null; typeLogIndex?: string | null } | null;
+};
+
+const OFFICIAL_POOLS: OfficialPoolConfig[] = [
+  {
+    key: "wstETH",
+    endpoint: "https://fx.aladdin.club/ALCHEMY_HOST/fx-v2-wsteth/3.0.0/gn",
+    poolAddress: "0x6ecfa38fee8a5277b91efda204c235814f0122e8",
+    poolName: "WstETHLongPool",
+    side: "long",
+    collateral: "wstETH",
+    precision: 1e18,
+  },
+  {
+    key: "WBTC",
+    endpoint: "https://fx.aladdin.club/ALCHEMY_HOST/fx-v2-wbtc/3.0.0/gn",
+    poolAddress: "0xab709e26fa6b0a30c119d8c55b887ded24952473",
+    poolName: "WBTCLongPool",
+    side: "long",
+    collateral: "WBTC",
+    precision: 1e8,
+  },
+  {
+    key: "wstETH_short",
+    endpoint: "https://fx.aladdin.club/ALCHEMY_HOST/fx-v2-wsteth-short-backup/v2.0.0/gn",
+    poolAddress: "0x25707b9e6690b52c60ae6744d711cf9c1dfc1876",
+    poolName: "WstETHShortPool",
+    side: "short",
+    collateral: "wstETH",
+    precision: 1e18,
+  },
+  {
+    key: "WBTC_short",
+    endpoint: "https://fx.aladdin.club/ALCHEMY_HOST/fx-v2-wbtc-short/v2.0.0/gn",
+    poolAddress: "0xa0cc8162c523998856d59065faa254f87d20a5b0",
+    poolName: "WBTCShortPool",
+    side: "short",
+    collateral: "WBTC",
+    precision: 1e8,
+  },
+];
 
 const tableCandidates = {
   transfers: ['public."FxPositionTransfer"', 'envio."FxPositionTransfer"'],
@@ -145,12 +233,62 @@ export async function ensureFxHistoryTables(client: Client) {
       synced_at timestamptz not null default now()
     );
 
+    create table if not exists public.fx_official_positions (
+      pool_address text not null,
+      position_id numeric not null,
+      pool_name text not null,
+      side text not null,
+      collateral text not null,
+      owner text,
+      real_owner text,
+      is_closed boolean not null default false,
+      price_raw numeric,
+      price_rate_raw numeric,
+      colls_raw numeric,
+      debts_raw numeric,
+      target_leverage numeric,
+      block_number bigint,
+      block_timestamp timestamptz,
+      synced_at timestamptz not null default now(),
+      primary key (pool_address, position_id)
+    );
+
+    create table if not exists public.fx_official_position_orders (
+      id text primary key,
+      pool_address text not null,
+      position_id numeric not null,
+      order_type text not null,
+      delta_colls_raw numeric,
+      delta_debts_raw numeric,
+      exec_price_raw numeric,
+      position_colls_raw numeric,
+      position_debts_raw numeric,
+      old_position_colls_raw numeric,
+      old_position_debts_raw numeric,
+      price_raw numeric,
+      price_rate_raw numeric,
+      protocol_fees_raw numeric,
+      position_coll_index numeric,
+      position_debt_index numeric,
+      tick_movement_price_raw numeric,
+      tick_movement_type text,
+      block_number bigint not null,
+      block_timestamp timestamptz,
+      transaction_hash text,
+      log_index bigint not null default 0,
+      synced_at timestamptz not null default now()
+    );
+
     create index if not exists fx_position_cashflows_position_idx
       on public.fx_position_cashflows(lower(pool_address), position_id, block_number, log_index);
     create index if not exists fx_position_cashflows_user_idx
       on public.fx_position_cashflows(lower(user_address), block_number) where user_address is not null;
     create index if not exists fx_position_snapshots_position_idx
       on public.fx_position_snapshots(lower(pool_address), position_id, block_number, log_index);
+    create index if not exists fx_official_positions_owner_idx
+      on public.fx_official_positions(lower(owner), block_number);
+    create index if not exists fx_official_position_orders_position_idx
+      on public.fx_official_position_orders(lower(pool_address), position_id, block_number, log_index);
   `);
 
   await client.query(`
@@ -336,6 +474,183 @@ async function syncSnapshots(client: Client, table: string | null) {
   return rows.length;
 }
 
+const OFFICIAL_POSITION_QUERY = `
+  query Positions($first: Int!, $skip: Int!) {
+    positions(first: $first, skip: $skip, orderBy: blockNumber, orderDirection: asc) {
+      timestamp
+      price
+      priceRate
+      owner
+      realOwner
+      isClosed
+      id
+      debts
+      colls
+      blockNumber
+      targetLeverage
+      orders(first: 1000, orderBy: blockNumber, orderDirection: asc) {
+        deltaColls
+        deltaDebts
+        execPrice
+        id
+        logIndex
+        positionColls
+        positionDebts
+        oldPositionColls
+        oldPositionDebts
+        price
+        priceRate
+        protocolFees
+        type
+        hash
+        timestamp
+        blockNumber
+        positionCollIndex
+        positionDebtIndex
+        tickMovement { price type typeLogIndex }
+      }
+    }
+  }
+`;
+
+async function fetchOfficialPositions(pool: OfficialPoolConfig, first: number, skip: number): Promise<OfficialPosition[]> {
+  const response = await fetch(pool.endpoint, {
+    method: "POST",
+    headers: { "content-type": "application/json", "user-agent": "fx-trader-profiles/official-order-sync" },
+    body: JSON.stringify({ query: OFFICIAL_POSITION_QUERY, variables: { first, skip } }),
+  });
+  const payload = (await response.json().catch(() => ({}))) as {
+    data?: { positions?: OfficialPosition[] };
+    errors?: { message?: string }[];
+  };
+  if (!response.ok || payload.errors?.length) {
+    throw new Error(`Official f(x) subgraph failed for ${pool.key}: ${payload.errors?.[0]?.message ?? response.statusText}`);
+  }
+  return payload.data?.positions ?? [];
+}
+
+async function syncOfficialFxOrders(client: Client) {
+  let positionCount = 0;
+  let orderCount = 0;
+  const pageSize = 500;
+
+  for (const pool of OFFICIAL_POOLS) {
+    for (let skip = 0; ; skip += pageSize) {
+      const positions = await fetchOfficialPositions(pool, pageSize, skip);
+      if (positions.length === 0) break;
+
+      for (const position of positions) {
+        await client.query(
+          `insert into public.fx_official_positions(
+            pool_address, position_id, pool_name, side, collateral, owner, real_owner, is_closed,
+            price_raw, price_rate_raw, colls_raw, debts_raw, target_leverage, block_number, block_timestamp, synced_at
+          ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,to_timestamp($15),now())
+          on conflict (pool_address, position_id) do update set
+            pool_name = excluded.pool_name,
+            side = excluded.side,
+            collateral = excluded.collateral,
+            owner = excluded.owner,
+            real_owner = excluded.real_owner,
+            is_closed = excluded.is_closed,
+            price_raw = excluded.price_raw,
+            price_rate_raw = excluded.price_rate_raw,
+            colls_raw = excluded.colls_raw,
+            debts_raw = excluded.debts_raw,
+            target_leverage = excluded.target_leverage,
+            block_number = excluded.block_number,
+            block_timestamp = excluded.block_timestamp,
+            synced_at = now()`,
+          [
+            pool.poolAddress,
+            nullSafe(position.id),
+            pool.poolName,
+            pool.side,
+            pool.collateral,
+            position.owner?.toLowerCase?.() ?? null,
+            position.realOwner?.toLowerCase?.() ?? null,
+            Boolean(position.isClosed),
+            nullSafe(position.price),
+            nullSafe(position.priceRate),
+            nullSafe(position.colls),
+            nullSafe(position.debts),
+            nullSafe(position.targetLeverage),
+            nullSafe(position.blockNumber),
+            nullSafe(position.timestamp),
+          ],
+        );
+        positionCount += 1;
+
+        if (typeof position.owner === "string" && position.owner.startsWith("0x")) {
+          await upsertKnownWallet(client, position.owner, "fx_official_subgraph");
+        }
+
+        for (const order of position.orders ?? []) {
+          await client.query(
+            `insert into public.fx_official_position_orders(
+              id, pool_address, position_id, order_type, delta_colls_raw, delta_debts_raw, exec_price_raw,
+              position_colls_raw, position_debts_raw, old_position_colls_raw, old_position_debts_raw,
+              price_raw, price_rate_raw, protocol_fees_raw, position_coll_index, position_debt_index,
+              tick_movement_price_raw, tick_movement_type, block_number, block_timestamp, transaction_hash, log_index, synced_at
+            ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,to_timestamp($20),$21,$22,now())
+            on conflict (id) do update set
+              pool_address = excluded.pool_address,
+              position_id = excluded.position_id,
+              order_type = excluded.order_type,
+              delta_colls_raw = excluded.delta_colls_raw,
+              delta_debts_raw = excluded.delta_debts_raw,
+              exec_price_raw = excluded.exec_price_raw,
+              position_colls_raw = excluded.position_colls_raw,
+              position_debts_raw = excluded.position_debts_raw,
+              old_position_colls_raw = excluded.old_position_colls_raw,
+              old_position_debts_raw = excluded.old_position_debts_raw,
+              price_raw = excluded.price_raw,
+              price_rate_raw = excluded.price_rate_raw,
+              protocol_fees_raw = excluded.protocol_fees_raw,
+              position_coll_index = excluded.position_coll_index,
+              position_debt_index = excluded.position_debt_index,
+              tick_movement_price_raw = excluded.tick_movement_price_raw,
+              tick_movement_type = excluded.tick_movement_type,
+              block_number = excluded.block_number,
+              block_timestamp = excluded.block_timestamp,
+              transaction_hash = excluded.transaction_hash,
+              log_index = excluded.log_index,
+              synced_at = now()`,
+            [
+              order.id,
+              pool.poolAddress,
+              nullSafe(position.id),
+              order.type,
+              nullSafe(order.deltaColls),
+              nullSafe(order.deltaDebts),
+              nullSafe(order.execPrice),
+              nullSafe(order.positionColls),
+              nullSafe(order.positionDebts),
+              nullSafe(order.oldPositionColls),
+              nullSafe(order.oldPositionDebts),
+              nullSafe(order.price),
+              nullSafe(order.priceRate),
+              nullSafe(order.protocolFees),
+              nullSafe(order.positionCollIndex),
+              nullSafe(order.positionDebtIndex),
+              nullSafe(order.tickMovement?.price),
+              order.tickMovement?.type ?? null,
+              nullSafe(order.blockNumber),
+              nullSafe(order.timestamp),
+              order.hash ?? null,
+              nullSafe(order.tickMovement?.typeLogIndex ?? order.logIndex),
+            ],
+          );
+          orderCount += 1;
+        }
+      }
+
+      if (positions.length < pageSize) break;
+    }
+  }
+
+  return { positions: positionCount, orders: orderCount };
+}
+
 export async function syncFxEventHistoryFromHasura(client: Client): Promise<SyncResult> {
   await ensureFxHistoryTables(client);
 
@@ -345,8 +660,19 @@ export async function syncFxEventHistoryFromHasura(client: Client): Promise<Sync
     snapshots: await findSourceTable(tableCandidates.snapshots),
   };
 
+  const official = await syncOfficialFxOrders(client);
+
   if (!sourceTables.transfers && !sourceTables.cashflows && !sourceTables.snapshots) {
-    return { configured: false, transfers: 0, cashflows: 0, snapshots: 0, walletsSeeded: 0, sourceTables };
+    return {
+      configured: official.positions > 0 || official.orders > 0,
+      transfers: 0,
+      cashflows: 0,
+      snapshots: 0,
+      officialPositions: official.positions,
+      officialOrders: official.orders,
+      walletsSeeded: 0,
+      sourceTables,
+    };
   }
 
   const [transfers, cashflows, snapshots] = await Promise.all([
@@ -360,9 +686,158 @@ export async function syncFxEventHistoryFromHasura(client: Client): Promise<Sync
     transfers,
     cashflows: cashflows.rows,
     snapshots,
+    officialPositions: official.positions,
+    officialOrders: official.orders,
     walletsSeeded: cashflows.walletsSeeded,
     sourceTables,
   };
+}
+
+function toFiniteNumber(value: unknown): number {
+  if (value === null || value === undefined) return 0;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function usdOrderPrice(pool: OfficialPoolConfig, row: Record<string, unknown>) {
+  const price = toFiniteNumber(row.price_raw);
+  const rate = toFiniteNumber(row.price_rate_raw);
+  const execPrice = toFiniteNumber(row.exec_price_raw);
+  if (rate <= 0) return 0;
+  if (execPrice > 0) return execPrice / rate;
+  if (price <= 0) return 0;
+  if (pool.side === "short") return 1e36 / (price * rate);
+  return price / 1e18;
+}
+
+function usdCurrentPrice(pool: OfficialPoolConfig, position: Record<string, unknown>, current: Record<string, unknown>) {
+  const officialPrice = toFiniteNumber(position.price_raw);
+  const officialRate = toFiniteNumber(position.price_rate_raw);
+  if (pool.side === "short") {
+    const oracle = toFiniteNumber(current.oracle_price);
+    const rate = officialRate > 0 ? officialRate : 1e18;
+    if (oracle > 0 && rate > 0) return 1 / (oracle * (rate / 1e18));
+    if (officialPrice > 0 && officialRate > 0) return 1e36 / (officialPrice * officialRate);
+    return 0;
+  }
+  const oracle = toFiniteNumber(current.oracle_price);
+  return oracle > 0 ? oracle : officialPrice / 1e18;
+}
+
+function orderPositionSize(pool: OfficialPoolConfig, row: Record<string, unknown>) {
+  if (pool.side === "short") {
+    return (toFiniteNumber(row.position_debts_raw) / pool.precision) * (toFiniteNumber(row.price_rate_raw) / 1e18);
+  }
+  return toFiniteNumber(row.position_colls_raw) / pool.precision;
+}
+
+function orderContribution(pool: OfficialPoolConfig, row: Record<string, unknown>, orderPrice: number) {
+  if (pool.side === "short") {
+    return (toFiniteNumber(row.delta_debts_raw) / pool.precision) * orderPrice * (toFiniteNumber(row.price_rate_raw) / 1e18);
+  }
+  return (toFiniteNumber(row.delta_colls_raw) / pool.precision) * orderPrice;
+}
+
+async function updateUiPnlFromOfficialOrders(client: Client) {
+  if (!(await tableExists(client, "public.fx_current_positions"))) return 0;
+
+  await client.query(`
+    alter table public.fx_position_pnl
+      add column if not exists ui_entry_price_usd numeric,
+      add column if not exists ui_unrealized_pnl_usd numeric,
+      add column if not exists ui_order_count integer not null default 0,
+      add column if not exists ui_last_order_block bigint;
+    alter table public.fx_current_positions
+      add column if not exists ui_entry_price_usd numeric,
+      add column if not exists ui_unrealized_pnl_usd numeric,
+      add column if not exists ui_order_count integer not null default 0,
+      add column if not exists ui_last_order_block bigint;
+  `);
+
+  const currentRows = await client.query<Record<string, unknown>>(`
+    select lower(pool_address) as pool_address, token_id, oracle_price, raw_collateral, raw_debt, collateral_value_usd, debt_value_usd
+    from public.fx_current_positions
+  `);
+
+  let updated = 0;
+  const resetTypes = new Set(["Close"]);
+  const nonEntryTypes = new Set(["Reduce", "TickMovement", "Rebalance", "Liquidate", "CollIndexChanged", "DebtIndexChanged", "Repay"]);
+
+  for (const current of currentRows.rows) {
+    const poolAddress = String(current.pool_address).toLowerCase();
+    const tokenId = String(current.token_id);
+    const pool = OFFICIAL_POOLS.find((item) => item.poolAddress === poolAddress);
+    if (!pool) continue;
+
+    const officialPosition = await client.query<Record<string, unknown>>(
+      `select * from public.fx_official_positions where lower(pool_address) = $1 and position_id = $2::numeric limit 1`,
+      [poolAddress, tokenId],
+    );
+    const position = officialPosition.rows[0];
+    if (!position) continue;
+
+    const orders = await client.query<Record<string, unknown>>(
+      `select * from public.fx_official_position_orders
+       where lower(pool_address) = $1 and position_id = $2::numeric
+       order by block_number asc, log_index asc`,
+      [poolAddress, tokenId],
+    );
+    if (orders.rows.length === 0) continue;
+
+    let entryValue = 0;
+    let entryPrice = 0;
+    let previousSize = 0;
+    for (const order of orders.rows) {
+      const type = String(order.order_type);
+      if (resetTypes.has(type)) {
+        entryValue = 0;
+        entryPrice = 0;
+        previousSize = 0;
+        continue;
+      }
+      const size = orderPositionSize(pool, order);
+      if (nonEntryTypes.has(type)) {
+        previousSize = size;
+        continue;
+      }
+      const price = usdOrderPrice(pool, order);
+      const contribution = orderContribution(pool, order, price);
+      entryValue = previousSize * entryPrice + contribution;
+      entryPrice = size > 0 ? entryValue / size : 0;
+      previousSize = size;
+    }
+
+    const currentPrice = usdCurrentPrice(pool, position, current);
+    const currentSize = pool.side === "short"
+      ? (toFiniteNumber(position.debts_raw) / pool.precision) * (toFiniteNumber(position.price_rate_raw) / 1e18)
+      : toFiniteNumber(current.raw_collateral) / pool.precision;
+    const uiPnl = entryPrice > 0 && currentPrice > 0
+      ? (currentPrice - entryPrice) * (pool.side === "short" ? -1 : 1) * currentSize
+      : 0;
+    const lastBlock = Math.max(...orders.rows.map((row) => toFiniteNumber(row.block_number)));
+
+    await client.query(
+      `update public.fx_position_pnl
+       set ui_entry_price_usd = $3,
+           ui_unrealized_pnl_usd = $4,
+           ui_order_count = $5,
+           ui_last_order_block = $6,
+           updated_at = now()
+       where lower(pool_address) = $1 and position_id = $2::numeric`,
+      [poolAddress, tokenId, entryPrice || null, uiPnl, orders.rows.length, lastBlock || null],
+    );
+    await client.query(
+      `update public.fx_current_positions
+       set ui_entry_price_usd = $3,
+           ui_unrealized_pnl_usd = $4,
+           ui_order_count = $5,
+           ui_last_order_block = $6
+       where lower(pool_address) = $1 and token_id = $2::numeric`,
+      [poolAddress, tokenId, entryPrice || null, uiPnl, orders.rows.length, lastBlock || null],
+    );
+    updated += 1;
+  }
+  return updated;
 }
 
 export async function computeFxPositionPnl(client: Client) {
@@ -392,17 +867,57 @@ export async function computeFxPositionPnl(client: Client) {
   `);
 
   // Step 1: Aggregate cashflows with entry prices from PositionSnapshot
+  // Entry price is the first snapshot AFTER the most recent close (coll=0,debt=0)
+  // for positions that have been closed at least once; otherwise first-ever snapshot.
   const result = await client.query<{ rows_upserted: string }>(`
-    with entry_prices as (
+    with last_closes as (
       select distinct on (lower(pool_address), position_id)
         lower(pool_address) as pool_address,
         position_id,
-        price_raw as entry_price_raw
+        block_number as last_close_block
       from public.fx_position_snapshots
-      where price_raw is not null and price_raw > 0
-      order by lower(pool_address), position_id, block_number asc, log_index asc
+      where coll_shares_raw = 0 and debt_shares_raw = 0
+      order by lower(pool_address), position_id, block_number desc
+    ),
+    entry_prices as (
+      select distinct on (lower(s.pool_address), s.position_id)
+        lower(s.pool_address) as pool_address,
+        s.position_id,
+        s.price_raw as entry_price_raw
+      from public.fx_position_snapshots s
+      left join last_closes lc
+        on lower(lc.pool_address) = lower(s.pool_address)
+        and lc.position_id = s.position_id
+      where s.price_raw is not null and s.price_raw > 0
+        and s.coll_shares_raw > 0
+        and (lc.last_close_block is null or s.block_number > lc.last_close_block)
+      order by lower(s.pool_address), s.position_id, s.block_number asc, s.log_index asc
+    ),
+    -- For realized PnL, only include cashflows from COMPLETED (closed) cycles
+    -- by filtering out cashflows that belong to the current open cycle
+    closed_cashflows as (
+      select c.*
+      from public.fx_position_cashflows c
+      inner join last_closes lc
+        on lower(lc.pool_address) = lower(c.pool_address)
+        and lc.position_id = c.position_id
+        and c.block_number <= lc.last_close_block
+      where c.position_id is not null
+    ),
+    -- Position that has never been closed still needs a pnl record with realized_pnl=0
+    -- for entry_price to propagate to current_positions
+    never_closed as (
+      select distinct lower(c.pool_address) as pool_address, c.position_id
+      from public.fx_position_cashflows c
+      where c.position_id is not null
+        and not exists (
+          select 1 from last_closes lc
+          where lower(lc.pool_address) = lower(c.pool_address)
+            and lc.position_id = c.position_id
+        )
     ),
     aggregate as (
+      -- Closed positions: aggregate cashflows from completed cycles only
       select
         lower(c.pool_address) as pool_address,
         c.position_id,
@@ -418,15 +933,33 @@ export async function computeFxPositionPnl(client: Client) {
         e.entry_price_raw,
         min(c.block_number)::bigint as first_cashflow_block,
         max(c.block_number)::bigint as last_cashflow_block
-      from public.fx_position_cashflows c
+      from closed_cashflows c
       left join entry_prices e on lower(e.pool_address) = lower(c.pool_address) and e.position_id = c.position_id
-      where c.position_id is not null
-        and c.source = 'manager'
+      where c.source = 'manager'
         and c.collateral_in_raw < 1000000000000000000000000
         and c.collateral_out_raw < 1000000000000000000000000
         and c.debt_increase_raw < 100000000000000000000000000000000
         and c.debt_decrease_raw < 100000000000000000000000000000000
       group by lower(c.pool_address), c.position_id, e.entry_price_raw
+      union all
+      -- Never-closed positions: no realized PnL (nothing closed yet), entry price from first snapshot
+      select
+        n.pool_address,
+        n.position_id,
+        0::int as cashflow_event_count,
+        0::numeric as collateral_in_raw,
+        0::numeric as collateral_out_raw,
+        0::numeric as net_collateral_raw,
+        0::numeric as debt_increase_raw,
+        0::numeric as debt_decrease_raw,
+        0::numeric as net_debt_raw,
+        0::numeric as total_fees_raw,
+        0::numeric as realized_pnl_raw,
+        e.entry_price_raw,
+        null::bigint as first_cashflow_block,
+        null::bigint as last_cashflow_block
+      from never_closed n
+      left join entry_prices e on lower(e.pool_address) = lower(n.pool_address) and e.position_id = n.position_id
     ), upserted as (
       insert into public.fx_position_pnl(
         pool_address, position_id, cashflow_event_count, collateral_in_raw, collateral_out_raw, net_collateral_raw,
@@ -478,8 +1011,11 @@ export async function computeFxPositionPnl(client: Client) {
     currentPositionsUpdated = updateResult.rowCount ?? 0;
   }
 
+  const uiPnlUpdated = await updateUiPnlFromOfficialOrders(client);
+
   return {
     positionsUpserted: Number(result.rows[0]?.rows_upserted ?? 0),
     currentPositionsUpdated,
+    uiPnlUpdated,
   };
 }

@@ -57,6 +57,8 @@ export type PositionSummary = {
   rawCollateral: string;
   rawDebt: string;
   oraclePrice: number;
+  entryPriceUsd: number;
+  unrealizedPnlUsd: number;
   collateralValueUsd: number;
   debtValueUsd: number;
   equityUsd: number;
@@ -216,6 +218,8 @@ function mapPosition(row: Record<string, unknown>): PositionSummary {
     rawCollateral: String(row.rawCollateral),
     rawDebt: String(row.rawDebt),
     oraclePrice: toNumber(row.oraclePrice),
+    entryPriceUsd: toNumber(row.entryPriceUsd),
+    unrealizedPnlUsd: toNumber(row.unrealizedPnlUsd),
     collateralValueUsd: toNumber(row.collateralValueUsd),
     debtValueUsd: toNumber(row.debtValueUsd),
     equityUsd: toNumber(row.equityUsd),
@@ -258,6 +262,8 @@ const traderSelect = `
     coalesce(max(debt_ratio), 0)::float8 as "maxDebtRatio",
     coalesce(sum(
       case
+        when ui_unrealized_pnl_usd is not null
+          then ui_unrealized_pnl_usd
         when side = 'long' and entry_price_raw is not null and entry_price_raw > 0
           then collateral_value_usd * (oracle_price * 1000000000000000000 / entry_price_raw - 1)
         when side = 'short' and entry_price_raw is not null and entry_price_raw > 0
@@ -267,6 +273,8 @@ const traderSelect = `
     ), 0)::float8 as "unrealizedPnlUsd",
     (coalesce(sum(
       case
+        when ui_unrealized_pnl_usd is not null
+          then ui_unrealized_pnl_usd
         when side = 'long' and entry_price_raw is not null and entry_price_raw > 0
           then collateral_value_usd * (oracle_price * 1000000000000000000 / entry_price_raw - 1)
         when side = 'short' and entry_price_raw is not null and entry_price_raw > 0
@@ -469,6 +477,8 @@ export async function getPositionProfile(id: string): Promise<PositionSummary | 
            raw_collateral::text as "rawCollateral",
            raw_debt::text as "rawDebt",
            coalesce(oracle_price, 0)::float8 as "oraclePrice",
+           coalesce(ui_entry_price_usd, 0)::float8 as "entryPriceUsd",
+           coalesce(ui_unrealized_pnl_usd, 0)::float8 as "unrealizedPnlUsd",
            coalesce(collateral_value_usd, 0)::float8 as "collateralValueUsd",
            coalesce(debt_value_usd, 0)::float8 as "debtValueUsd",
            coalesce(equity_usd, 0)::float8 as "equityUsd",
@@ -520,6 +530,8 @@ export async function getTraderProfile(address: string): Promise<TraderProfile |
              raw_collateral::text as "rawCollateral",
              raw_debt::text as "rawDebt",
              coalesce(oracle_price, 0)::float8 as "oraclePrice",
+             coalesce(ui_entry_price_usd, 0)::float8 as "entryPriceUsd",
+             coalesce(ui_unrealized_pnl_usd, 0)::float8 as "unrealizedPnlUsd",
              coalesce(collateral_value_usd, 0)::float8 as "collateralValueUsd",
              coalesce(debt_value_usd, 0)::float8 as "debtValueUsd",
              coalesce(equity_usd, 0)::float8 as "equityUsd",

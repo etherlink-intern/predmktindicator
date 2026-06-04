@@ -138,6 +138,8 @@ export default async function TraderPage({ params }: TraderPageProps) {
               <th>Market</th>
               <th>Side</th>
               <th className="numeric">Oracle price</th>
+              <th className="numeric">Entry price</th>
+              <th className="numeric">PnL</th>
               <th className="numeric">Collateral</th>
               <th className="numeric">Debt</th>
               <th className="numeric">Equity</th>
@@ -153,6 +155,8 @@ export default async function TraderPage({ params }: TraderPageProps) {
                 <td>{displayPool(position.poolName)}</td>
                 <td><span className={`pill ${position.side}`}>{position.side}</span></td>
                 <td className="numeric">{formatOraclePrice(position.oraclePrice)}</td>
+                <td className="numeric">{position.entryPriceUsd ? formatUsd(position.entryPriceUsd) : "—"}</td>
+                <td className="numeric">{formatPnl(position.unrealizedPnlUsd)}</td>
                 <td className="numeric">{formatUsd(position.collateralValueUsd)}</td>
                 <td className="numeric">{formatUsd(position.debtValueUsd)}</td>
                 <td className="numeric">{formatUsd(position.equityUsd)}</td>
