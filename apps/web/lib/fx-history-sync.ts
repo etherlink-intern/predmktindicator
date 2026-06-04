@@ -145,6 +145,15 @@ export async function ensureFxHistoryTables(client: Client) {
     create index if not exists fx_position_snapshots_position_idx
       on public.fx_position_snapshots(lower(pool_address), position_id, block_number, log_index);
   `);
+
+  await client.query(`
+    alter table public.fx_position_transfers
+      alter column log_index type bigint using log_index::bigint;
+    alter table public.fx_position_cashflows
+      alter column log_index type bigint using log_index::bigint;
+    alter table public.fx_position_snapshots
+      alter column log_index type bigint using log_index::bigint;
+  `);
 }
 
 async function syncTransfers(client: Client, table: string | null) {
@@ -209,7 +218,7 @@ async function syncCashflows(client: Client, table: string | null) {
         delta_collateral_raw, delta_debt_raw, collateral_in_raw, collateral_out_raw, debt_increase_raw,
         debt_decrease_raw, fee_raw, collateral_raw, debt_raw, borrow_raw, block_number, block_timestamp,
         transaction_hash, transaction_from, log_index, synced_at
-      ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,coalesce($11,0),coalesce($12,0),coalesce($13,0),coalesce($14,0),coalesce($15,0),$16,$17,$18,$19,to_timestamp($20),$21,$22,$23,now())
+      ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,coalesce($11::numeric,0),coalesce($12::numeric,0),coalesce($13::numeric,0),coalesce($14::numeric,0),coalesce($15::numeric,0),$16,$17,$18,$19,to_timestamp($20),$21,$22,$23,now())
       on conflict (id) do update set
         source = excluded.source,
         event_name = excluded.event_name,
