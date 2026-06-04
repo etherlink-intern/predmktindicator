@@ -4,14 +4,16 @@ import { LastRefreshedCounter } from "./last-refreshed";
 const numberFormatter = new Intl.NumberFormat("en-US");
 const compactFormatter = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 });
 
-function ExposureBiasRow({
+function BiasInstrumentRow({
   label,
   longUsd,
   shortUsd,
+  color,
 }: {
   label: string;
   longUsd: number;
   shortUsd: number;
+  color: string;
 }) {
   const total = longUsd + shortUsd || 1;
   const longPct = (longUsd / total) * 100;
@@ -19,157 +21,26 @@ function ExposureBiasRow({
   const net = longUsd - shortUsd;
   const dominant = net > 0 ? "long" : "short";
   const dominantPct = Math.max(longPct, shortPct);
-  const ratio = shortUsd > 0 ? (longUsd / shortUsd).toFixed(1) : "∞";
-
   return (
-    <div
-      style={{
-        padding: "12px 0",
-        borderBottom: "1px solid rgba(148,163,184,0.10)",
-      }}
-    >
-      {/* Row 1: label + net */}
-      <div
+    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+      <span
         style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: "8px",
+          width: 6, height: 6, borderRadius: "50%", background: color,
+          display: "inline-block", flexShrink: 0,
         }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <span
-            style={{
-              width: 8,
-              height: 8,
-              borderRadius: "50%",
-              background: label === "ETH" ? "#627eea" : "#f7931a",
-              display: "inline-block",
-              flexShrink: 0,
-            }}
-          />
-          <span style={{ fontWeight: 700, fontSize: "13px", letterSpacing: "0.02em" }}>
-            {label}
-          </span>
-          <span
-            style={{
-              fontSize: "12px",
-              fontWeight: 700,
-              color: dominant === "long" ? "#22c55e" : "#ef4444",
-            }}
-          >
-            {formatUsd(Math.abs(net))}
-          </span>
-          <span
-            style={{
-              fontSize: "11px",
-              color: "var(--muted)",
-              fontWeight: 600,
-            }}
-          >
-            {dominant === "long" ? "Net long" : "Net short"}
-          </span>
-        </div>
+      />
+      <span style={{ fontSize: "12px", fontWeight: 700, minWidth: "30px" }}>{label}</span>
+      <div style={{ flex: 1, height: 6, borderRadius: "999px", background: "rgba(148,163,184,0.10)", overflow: "hidden", display: "flex" }}>
+        <span style={{ width: `${longPct}%`, background: "rgba(34,197,94,0.50)", borderRadius: "999px 0 0 999px" }} />
+        <span style={{ width: `${shortPct}%`, background: "rgba(239,68,68,0.50)", borderRadius: "0 999px 999px 0" }} />
       </div>
-
-      {/* Bias bar — fills proportionally to show dominance */}
-      <div
-        style={{
-          position: "relative",
-          height: 20,
-          background: "rgba(148,163,184,0.06)",
-          borderRadius: 3,
-          overflow: "hidden",
-          marginBottom: "6px",
-        }}
-      >
-        {/* Long fill (left) */}
-        <div
-          style={{
-            position: "absolute",
-            left: 0,
-            top: 0,
-            height: "100%",
-            width: `${longPct}%`,
-            background: "rgba(34,197,94,0.35)",
-            transition: "width 0.3s",
-          }}
-        />
-        {/* Short fill (right) */}
-        <div
-          style={{
-            position: "absolute",
-            right: 0,
-            top: 0,
-            height: "100%",
-            width: `${shortPct}%`,
-            background: "rgba(239,68,68,0.35)",
-            transition: "width 0.3s",
-          }}
-        />
-        {/* 50/50 tick */}
-        <div
-          style={{
-            position: "absolute",
-            left: "50%",
-            top: 0,
-            width: 1,
-            height: "100%",
-            background: "rgba(148,163,184,0.15)",
-          }}
-        />
-        {/* Dominant label overlay */}
-        <div
-          style={{
-            position: "absolute",
-            top: 0,
-            height: "100%",
-            display: "flex",
-            alignItems: "center",
-            paddingLeft: dominant === "long" ? "8px" : undefined,
-            paddingRight: dominant === "short" ? "8px" : undefined,
-            left: dominant === "long" ? 0 : undefined,
-            right: dominant === "short" ? 0 : undefined,
-            justifyContent: dominant === "long" ? "flex-start" : "flex-end",
-            width: "100%",
-          }}
-        >
-          <span
-            style={{
-              fontSize: "11px",
-              fontWeight: 700,
-              letterSpacing: "0.04em",
-              color: dominant === "long" ? "rgba(187,247,208,0.9)" : "rgba(254,202,202,0.9)",
-            }}
-          >
-            {dominantPct.toFixed(1)}% {dominant === "long" ? "LONG" : "SHORT"}
-          </span>
-        </div>
-      </div>
-
-      {/* Row 2: detail metrics */}
-      <div
-        style={{
-          display: "flex",
-          gap: "16px",
-          fontSize: "11px",
-          color: "var(--muted)",
-          flexWrap: "wrap",
-        }}
-      >
-        <span>
-          Long <b style={{ color: "rgba(187,247,208,0.85)" }}>{formatUsd(longUsd)}</b> ({longPct.toFixed(1)}%)
-        </span>
-        <span>
-          Short <b style={{ color: "rgba(254,202,202,0.85)" }}>{formatUsd(shortUsd)}</b> ({shortPct.toFixed(1)}%)
-        </span>
-        <span>
-          Ratio <b style={{ color: "#e2e8f0" }}>{ratio}x</b>
-        </span>
-      </div>
+      <span style={{ fontSize: "11px", fontWeight: 700, minWidth: "52px", textAlign: "right", color: dominant === "long" ? "#bbf7d0" : "#fecaca" }}>
+        {dominantPct.toFixed(0)}% {dominant === "long" ? "L" : "S"}
+      </span>
     </div>
   );
 }
+
 
 
 function formatCompactUsd(value: number) {
@@ -218,6 +89,10 @@ function MarketOverviewTerminal({
   openInterestUsd,
   longUsd,
   shortUsd,
+  ethLongUsd,
+  ethShortUsd,
+  btcLongUsd,
+  btcShortUsd,
   debtUsd,
   riskPositions,
   riskNotionalUsd,
@@ -229,6 +104,10 @@ function MarketOverviewTerminal({
   openInterestUsd: number;
   longUsd: number;
   shortUsd: number;
+  ethLongUsd: number;
+  ethShortUsd: number;
+  btcLongUsd: number;
+  btcShortUsd: number;
   debtUsd: number;
   riskPositions: number;
   riskNotionalUsd: number;
@@ -267,7 +146,7 @@ function MarketOverviewTerminal({
           </div>
         </article>
 
-        <article className="market-panel market-panel-bias" title={`Long ${formatUsd(longUsd)} / Short ${formatUsd(shortUsd)}`}>
+        <article className="market-panel market-panel-bias" title={`Long ${formatUsd(longUsd)} / Short ${formatUsd(shortUsd)} / ETH: ${formatCompactUsd(ethLongUsd)} ${formatCompactUsd(ethShortUsd)} / BTC: ${formatCompactUsd(btcLongUsd)} ${formatCompactUsd(btcShortUsd)}`}>
           <div className="panel-topline">
             <p className="market-label">Position Bias</p>
             <span className="bias-badge">{longPct.toFixed(1)}% Long Bias</span>
@@ -280,7 +159,11 @@ function MarketOverviewTerminal({
             <span className="dominance-long" style={{ width: `${longPct}%` }} />
             <span className="dominance-short" style={{ width: `${shortPct}%` }} />
           </div>
-          <div className="market-micro-row">
+          <div style={{ marginTop: "14px", borderTop: "1px solid rgba(148,163,184,0.08)", paddingTop: "8px" }}>
+            <BiasInstrumentRow label="ETH" longUsd={ethLongUsd} shortUsd={ethShortUsd} color="#627eea" />
+            <BiasInstrumentRow label="BTC" longUsd={btcLongUsd} shortUsd={btcShortUsd} color="#f7931a" />
+          </div>
+          <div className="market-micro-row" style={{ marginTop: "6px" }}>
             <span>long {longPct.toFixed(1)}%</span>
             <span>short {shortPct.toFixed(1)}%</span>
           </div>
@@ -374,6 +257,10 @@ export default async function HomePage() {
         openInterestUsd={dashboard.totals.trackedOpenInterestUsd || totalOi}
         longUsd={dashboard.totals.longNotionalUsd || totalLong}
         shortUsd={dashboard.totals.shortBorrowedExposureUsd || totalShort}
+        ethLongUsd={ethLong}
+        ethShortUsd={ethShort}
+        btcLongUsd={btcLong}
+        btcShortUsd={btcShort}
         debtUsd={dashboard.totals.longDebtUsd}
         riskPositions={dashboard.totals.riskQueuePositions80}
         riskNotionalUsd={dashboard.totals.riskQueueNotional80Usd}
