@@ -513,6 +513,19 @@ const OFFICIAL_POSITION_QUERY = `
   }
 `;
 
+// Lightweight query: only position ID and order protocol fees — used for
+// fee aggregation on long pools where syncing full order data would be too heavy.
+const LONG_POOL_FEE_QUERY = `
+  query LongPoolFees($ids: [String!]!) {
+    positions(first: 1000, where: { id_in: $ids }) {
+      id
+      orders(first: 1000) {
+        protocolFees
+      }
+    }
+  }
+`;
+
 async function fetchOfficialPositions(pool: OfficialPoolConfig, ids: string[]): Promise<OfficialPosition[]> {
   if (ids.length === 0) return [];
   const response = await fetch(pool.endpoint, {
@@ -1026,9 +1039,111 @@ export async function computeFxPositionPnl(client: Client) {
 
   const uiPnlUpdated = await updateUiPnlFromOfficialOrders(client);
 
+  // Step 3: Aggregate protocol fees from official order stream and add to total_fees_raw
+  // The Envio cashflow events stopped capturing protocolFees after Aug 2025
+  // (protocolFeeRate was set to 0 on the pool managers), but the official order
+  // stream still carries the actual per-order fee data.
+  let officialFeeUpdated = 0;
+  if (await tableExists(client, "public.fx_official_position_orders")) {
+    // Update fx_position_pnl with official order fees
+    const feeResult = await client.query(`
+      update public.fx_position_pnl p
+      set total_fees_raw = coalesce(p.total_fees_raw, 0) + f.official_fees,
+          updated_at = now()
+      from (
+        select lower(pool_address) as pool_address, position_id,
+               coalesce(sum(protocol_fees_raw), 0) as official_fees
+        from public.fx_official_position_orders
+        where protocol_fees_raw is not null and protocol_fees_raw > 0
+        group by lower(pool_address), position_id
+      ) f
+      where lower(p.pool_address) = f.pool_address
+        and p.position_id = f.position_id
+    `);
+    officialFeeUpdated = (feeResult.rowCount ?? 0);
+    // Also update fx_current_positions with the new fee totals
+    if (await tableExists(client, "public.fx_current_positions")) {
+      await client.query(`
+        update public.fx_current_positions p
+        set total_fees_raw = h.total_fees_raw
+        from public.fx_position_pnl h
+        where lower(p.pool_address) = lower(h.pool_address)
+          and p.token_id = h.position_id
+          and h.total_fees_raw > coalesce(p.total_fees_raw, 0)
+      `);
+    }
+  }
+
+  // Step 3b: For long pools, fetch protocol fees directly from the official API
+  // using a lightweight query that only returns fees, not the full order data.
+  const longPools = OFFICIAL_POOLS.filter((item) => item.side === "long");
+  for (const pool of longPools) {
+    try {
+    const currentIds = await client.query<{ token_id: string }>(
+      `select token_id::text from public.fx_current_positions where lower(pool_address) = $1 order by token_id`,
+      [pool.poolAddress],
+    );
+    const ids = currentIds.rows.map((row) => row.token_id);
+    let poolFeeCount = 0;
+    const longChunkSize = 50;
+    for (let start = 0; start < ids.length; start += longChunkSize) {
+      const chunk = ids.slice(start, start + longChunkSize);
+      if (chunk.length === 0) continue;
+      let response: Response | null = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          response = await fetch(pool.endpoint, {
+            method: "POST",
+            headers: { "content-type": "application/json", "user-agent": "fx-trader-profiles/official-fee-sync" },
+            body: JSON.stringify({ query: LONG_POOL_FEE_QUERY, variables: { ids: chunk } }),
+            signal: AbortSignal.timeout(15_000),
+          });
+          if (response.ok) break;
+          await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
+        } catch {
+          if (attempt < 2) await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
+        }
+      }
+      if (!response?.ok) continue;
+      const payload = (await response.json().catch(() => ({}))) as {
+        data?: { positions?: { id: string; orders?: { protocolFees?: string }[] }[] };
+      };
+      for (const position of payload.data?.positions ?? []) {
+        const orderFees = (position.orders ?? [])
+          .map((o) => (o.protocolFees ? BigInt(String(o.protocolFees)) : 0n))
+          .reduce((a, b) => a + b, 0n);
+        if (orderFees <= 0n) continue;
+        await client.query(
+          `update public.fx_position_pnl
+           set total_fees_raw = coalesce(total_fees_raw, 0) + $3::numeric,
+               updated_at = now()
+           where lower(pool_address) = $1 and position_id = $2::numeric`,
+          [pool.poolAddress, nullSafe(position.id), String(orderFees)],
+        );
+        poolFeeCount += 1;
+      }
+    }
+    if (poolFeeCount > 0) {
+      await client.query(`
+        update public.fx_current_positions p
+        set total_fees_raw = h.total_fees_raw
+        from public.fx_position_pnl h
+        where lower(p.pool_address) = lower(h.pool_address)
+          and p.token_id = h.position_id
+          and lower(h.pool_address) = lower($1)
+          and h.total_fees_raw > coalesce(p.total_fees_raw, 0)
+      `, [pool.poolAddress]);
+      officialFeeUpdated += poolFeeCount;
+    }
+    } catch (err) {
+      console.error(`Long pool fee sync failed for ${pool.key}:`, err);
+    }
+  }
+
   return {
     positionsUpserted: Number(result.rows[0]?.rows_upserted ?? 0),
     currentPositionsUpdated,
     uiPnlUpdated,
+    officialFeeUpdated,
   };
 }
