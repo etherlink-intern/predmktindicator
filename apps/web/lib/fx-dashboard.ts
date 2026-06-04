@@ -63,11 +63,25 @@ export type PositionSummary = {
   debtRatio: number;
 };
 
+export type HistoricalPosition = {
+  poolAddress: string;
+  poolName: string;
+  side: string;
+  tokenId: string;
+  realizedPnlUsd: number;
+  feesUsd: number;
+  cashflowEventCount: number;
+  firstBlock: number;
+  lastBlock: number;
+  isOpen: boolean;
+};
+
 export type TraderProfile = {
   owner: string;
   generatedAt: string | null;
   summary: TraderSummary;
   positions: PositionSummary[];
+  history: HistoricalPosition[];
 };
 
 export type DashboardData = {
@@ -477,7 +491,7 @@ export async function getTraderProfile(address: string): Promise<TraderProfile |
       if (!(await hasCurrentPositionsTable(client))) {
         return null;
       }
-      const [generatedAt, summaryResult, positionsResult] = await Promise.all([
+      const [generatedAt, summaryResult, positionsResult, historyResult] = await Promise.all([
         latestSnapshotTime(client),
         client.query<Record<string, unknown>>(
           `${traderSelect}
@@ -505,6 +519,31 @@ export async function getTraderProfile(address: string): Promise<TraderProfile |
            where lower(owner) = $1
            order by equity_usd desc nulls last, pool_name, token_id`,
           [normalized]
+        ),
+        client.query<Record<string, unknown>>(
+          `with trader_cashflows as (
+             select distinct pool_address, position_id
+             from public.fx_position_cashflows
+             where (lower(user_address) = $1 or lower(recipient_address) = $1)
+               and position_id is not null
+           )
+           select
+             lower(h.pool_address) as "poolAddress",
+             coalesce(p.pool_name, h.pool_address) as "poolName",
+             coalesce(p.side, 'unknown') as "side",
+             h.position_id::text as "tokenId",
+             coalesce((h.realized_pnl_raw * coalesce(p.oracle_price, 0) / 1000000000000000000), 0)::float8 as "realizedPnlUsd",
+             coalesce((h.total_fees_raw * coalesce(p.oracle_price, 0) / 1000000000000000000), 0)::float8 as "feesUsd",
+             h.cashflow_event_count as "cashflowEventCount",
+             h.first_cashflow_block as "firstBlock",
+             h.last_cashflow_block as "lastBlock",
+             p.token_id is not null as "isOpen"
+           from public.fx_position_pnl h
+           join trader_cashflows tc on lower(tc.pool_address) = lower(h.pool_address) and tc.position_id = h.position_id
+           left join public.fx_current_positions p
+             on lower(p.pool_address) = lower(h.pool_address) and p.token_id = h.position_id
+           order by h.last_cashflow_block desc nulls last`,
+          [normalized]
         )
       ]);
 
@@ -514,7 +553,19 @@ export async function getTraderProfile(address: string): Promise<TraderProfile |
         owner: String(summary.owner),
         generatedAt,
         summary: mapTrader(summary),
-        positions: positionsResult.rows.map(mapPosition)
+        positions: positionsResult.rows.map(mapPosition),
+        history: historyResult.rows.map((row) => ({
+          poolAddress: String(row.poolAddress),
+          poolName: String(row.poolName),
+          side: String(row.side),
+          tokenId: String(row.tokenId),
+          realizedPnlUsd: toNumber(row.realizedPnlUsd),
+          feesUsd: toNumber(row.feesUsd),
+          cashflowEventCount: Number(row.cashflowEventCount),
+          firstBlock: Number(row.firstBlock),
+          lastBlock: Number(row.lastBlock),
+          isOpen: Boolean(row.isOpen),
+        })),
       };
     });
   } catch (error) {

@@ -102,9 +102,9 @@ export default async function TraderPage({ params }: TraderPageProps) {
         </div>
       </div>
 
-      {/* Positions table — immediately visible, no section gap */}
+      {/* Open positions table */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-        <h2 style={{ fontSize: 14, fontWeight: 600 }}>Open positions</h2>
+        <h2 style={{ fontSize: 14, fontWeight: 600 }}>Open positions <span className="muted small" style={{ fontWeight: 400 }}>({profile.positions.length})</span></h2>
         <span className="muted small">Snapshot: {formatDate(profile.generatedAt)}</span>
       </div>
 
@@ -140,6 +140,52 @@ export default async function TraderPage({ params }: TraderPageProps) {
           </tbody>
         </table>
       </div>
+
+      {/* Historical positions table */}
+      {profile.history.length > 0 && (
+        <>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "20px 0 8px" }}>
+            <h2 style={{ fontSize: 14, fontWeight: 600 }}>Position history <span className="muted small" style={{ fontWeight: 400 }}>({profile.history.length})</span></h2>
+          </div>
+
+          <div className="table-wrap" style={{ marginTop: 0 }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Position</th>
+                  <th>Market</th>
+                  <th>Side</th>
+                  <th className="numeric">Realized PnL</th>
+                  <th className="numeric">Fees paid</th>
+                  <th className="numeric">Events</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {profile.history.map((h) => (
+                  <tr key={`${h.poolAddress}:${h.tokenId}`}>
+                    <td>
+                      <a className="mono" href={`/positions/${h.poolAddress}-${h.tokenId}`} style={{ fontSize: 13 }}>#{h.tokenId}</a>
+                    </td>
+                    <td>{h.poolName !== h.poolAddress ? h.poolName : h.poolAddress.slice(0, 10) + "…"}</td>
+                    <td><span className={`pill ${h.side}`}>{h.side === "unknown" ? "—" : h.side}</span></td>
+                    <td className="numeric" style={{ color: h.realizedPnlUsd >= 0 ? "var(--positive)" : "var(--negative)" }}>
+                      {formatUsd(h.realizedPnlUsd)}
+                    </td>
+                    <td className="numeric">{formatUsd(h.feesUsd)}</td>
+                    <td className="numeric">{nf.format(h.cashflowEventCount)}</td>
+                    <td>
+                      <span className={`pill ${h.isOpen ? "long" : "short"}`} style={{ fontSize: 10 }}>
+                        {h.isOpen ? "Open" : "Closed"}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
     </section>
   );
 }
