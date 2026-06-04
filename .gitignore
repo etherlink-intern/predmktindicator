@@ -39,3 +39,5 @@ pnpm-debug.log*
 .DS_Store
 .vscode/
 .idea/
+*.pyc
+__pycache__
