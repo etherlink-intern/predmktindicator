@@ -2,6 +2,8 @@ import { displayInstrument, displayPool, formatDate, formatPercent, formatUsd, g
 
 const numberFormatter = new Intl.NumberFormat("en-US");
 
+export const dynamic = "force-dynamic";
+
 function ExposureBar({
   label,
   longUsd,
@@ -89,6 +91,7 @@ export default async function HomePage() {
   const snapshotCards = [
     ["Open positions", numberFormatter.format(dashboard.totals.openPositions), "Active position NFTs confirmed on-chain"],
     ["Active wallets", numberFormatter.format(dashboard.totals.uniqueTraders), "Wallets that currently own tracked positions"],
+    ["Indexed events", numberFormatter.format(dashboard.totals.syncedEvents), "Synced transfers, cashflows, and pool snapshots from Envio"],
     ["Current equity", formatUsd(dashboard.totals.equityUsd), "Estimated current equity across tracked positions"],
     ["Last updated", formatDate(dashboard.generatedAt), "Most recent dashboard refresh"]
   ];
@@ -139,6 +142,11 @@ export default async function HomePage() {
       dashboard.walletMaintenance.lastMaintainedAt
         ? `Tracked wallet list refreshed ${formatDate(dashboard.walletMaintenance.lastMaintainedAt)}.`
         : "Wallet tracking is initializing."
+    ],
+    [
+      "Event history",
+      `${numberFormatter.format(dashboard.totals.syncedCashflows)} cashflows`,
+      `${numberFormatter.format(dashboard.totals.syncedTransfers)} transfers and ${numberFormatter.format(dashboard.totals.syncedSnapshots)} pool snapshots synced.`
     ]
   ];
 

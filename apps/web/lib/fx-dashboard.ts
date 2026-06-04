@@ -87,6 +87,10 @@ export type DashboardData = {
     longDebtUsd: number;
     riskQueuePositions80: number;
     riskQueueNotional80Usd: number;
+    syncedTransfers: number;
+    syncedCashflows: number;
+    syncedSnapshots: number;
+    syncedEvents: number;
   };
   pools: PoolSummary[];
   traders: TraderSummary[];
@@ -110,7 +114,11 @@ const emptyDashboard: DashboardData = {
     shortBorrowedExposureUsd: 0,
     longDebtUsd: 0,
     riskQueuePositions80: 0,
-    riskQueueNotional80Usd: 0
+    riskQueueNotional80Usd: 0,
+    syncedTransfers: 0,
+    syncedCashflows: 0,
+    syncedSnapshots: 0,
+    syncedEvents: 0
   },
   pools: [],
   traders: [],
@@ -237,7 +245,7 @@ const traderSelect = `
         when side = 'long' and entry_price_raw is not null and entry_price_raw > 0
           then collateral_value_usd * (oracle_price * 1000000000000000000 / entry_price_raw - 1)
         when side = 'short' and entry_price_raw is not null and entry_price_raw > 0
-          then debt_value_usd * (1 - oracle_price * 1000000000000000000 / entry_price_raw)
+          then debt_value_usd * (1 - entry_price_raw / (oracle_price * 1000000000000000000))
         else 0
       end
     ), 0)::float8 as "unrealizedPnlUsd",
@@ -246,7 +254,7 @@ const traderSelect = `
         when side = 'long' and entry_price_raw is not null and entry_price_raw > 0
           then collateral_value_usd * (oracle_price * 1000000000000000000 / entry_price_raw - 1)
         when side = 'short' and entry_price_raw is not null and entry_price_raw > 0
-          then debt_value_usd * (1 - oracle_price * 1000000000000000000 / entry_price_raw)
+          then debt_value_usd * (1 - entry_price_raw / (oracle_price * 1000000000000000000))
         else 0
       end
     ), 0)::float8 + coalesce(sum(realized_pnl_raw * oracle_price / 1000000000000000000), 0)::float8 as "totalPnlUsd",
@@ -283,32 +291,48 @@ export async function getDashboardData(): Promise<DashboardData> {
           long_debt_usd: number;
           risk_queue_positions_80: string;
           risk_queue_notional_80_usd: number;
+          synced_transfers: string;
+          synced_cashflows: string;
+          synced_snapshots: string;
         }>(`
+          with position_totals as (
+            select
+              count(*)::text as open_positions,
+              count(distinct owner)::text as unique_traders,
+              count(distinct pool_address)::text as pools,
+              count(*) filter (where side = 'long')::text as long_positions,
+              count(*) filter (where side = 'short')::text as short_positions,
+              coalesce(sum(collateral_value_usd), 0)::float8 as collateral_value_usd,
+              coalesce(sum(debt_value_usd), 0)::float8 as debt_value_usd,
+              coalesce(sum(equity_usd), 0)::float8 as equity_usd,
+              (
+                coalesce(sum(collateral_value_usd) filter (where side = 'long'), 0) +
+                coalesce(sum(debt_value_usd) filter (where side = 'short'), 0)
+              )::float8 as tracked_open_interest_usd,
+              coalesce(sum(collateral_value_usd) filter (where side = 'long'), 0)::float8 as long_notional_usd,
+              coalesce(sum(debt_value_usd) filter (where side = 'short'), 0)::float8 as short_borrowed_exposure_usd,
+              coalesce(sum(debt_value_usd) filter (where side = 'long'), 0)::float8 as long_debt_usd,
+              count(*) filter (where debt_ratio >= 0.8)::text as risk_queue_positions_80,
+              coalesce(sum(
+                case
+                  when debt_ratio >= 0.8 and side = 'long' then collateral_value_usd
+                  when debt_ratio >= 0.8 and side = 'short' then debt_value_usd
+                  else 0
+                end
+              ), 0)::float8 as risk_queue_notional_80_usd
+            from public.fx_current_positions
+          ), event_totals as (
+            select
+              coalesce(to_regclass('public.fx_position_transfers') is not null, false) as has_transfers,
+              coalesce(to_regclass('public.fx_position_cashflows') is not null, false) as has_cashflows,
+              coalesce(to_regclass('public.fx_position_snapshots') is not null, false) as has_snapshots
+          )
           select
-            count(*)::text as open_positions,
-            count(distinct owner)::text as unique_traders,
-            count(distinct pool_address)::text as pools,
-            count(*) filter (where side = 'long')::text as long_positions,
-            count(*) filter (where side = 'short')::text as short_positions,
-            coalesce(sum(collateral_value_usd), 0)::float8 as collateral_value_usd,
-            coalesce(sum(debt_value_usd), 0)::float8 as debt_value_usd,
-            coalesce(sum(equity_usd), 0)::float8 as equity_usd,
-            (
-              coalesce(sum(collateral_value_usd) filter (where side = 'long'), 0) +
-              coalesce(sum(debt_value_usd) filter (where side = 'short'), 0)
-            )::float8 as tracked_open_interest_usd,
-            coalesce(sum(collateral_value_usd) filter (where side = 'long'), 0)::float8 as long_notional_usd,
-            coalesce(sum(debt_value_usd) filter (where side = 'short'), 0)::float8 as short_borrowed_exposure_usd,
-            coalesce(sum(debt_value_usd) filter (where side = 'long'), 0)::float8 as long_debt_usd,
-            count(*) filter (where debt_ratio >= 0.8)::text as risk_queue_positions_80,
-            coalesce(sum(
-              case
-                when debt_ratio >= 0.8 and side = 'long' then collateral_value_usd
-                when debt_ratio >= 0.8 and side = 'short' then debt_value_usd
-                else 0
-              end
-            ), 0)::float8 as risk_queue_notional_80_usd
-          from public.fx_current_positions
+            position_totals.*,
+            case when event_totals.has_transfers then (select count(*)::text from public.fx_position_transfers) else '0' end as synced_transfers,
+            case when event_totals.has_cashflows then (select count(*)::text from public.fx_position_cashflows) else '0' end as synced_cashflows,
+            case when event_totals.has_snapshots then (select count(*)::text from public.fx_position_snapshots) else '0' end as synced_snapshots
+          from position_totals, event_totals
         `),
         client.query<{
           pool_name: string;
@@ -364,7 +388,14 @@ export async function getDashboardData(): Promise<DashboardData> {
           shortBorrowedExposureUsd: toNumber(totals?.short_borrowed_exposure_usd),
           longDebtUsd: toNumber(totals?.long_debt_usd),
           riskQueuePositions80: Number(totals?.risk_queue_positions_80 ?? 0),
-          riskQueueNotional80Usd: toNumber(totals?.risk_queue_notional_80_usd)
+          riskQueueNotional80Usd: toNumber(totals?.risk_queue_notional_80_usd),
+          syncedTransfers: Number(totals?.synced_transfers ?? 0),
+          syncedCashflows: Number(totals?.synced_cashflows ?? 0),
+          syncedSnapshots: Number(totals?.synced_snapshots ?? 0),
+          syncedEvents:
+            Number(totals?.synced_transfers ?? 0) +
+            Number(totals?.synced_cashflows ?? 0) +
+            Number(totals?.synced_snapshots ?? 0)
         },
         pools: poolsResult.rows.map((row) => ({
           poolName: row.pool_name,
