@@ -54,30 +54,48 @@ def load_env() -> dict[str, str]:
 
 
 ENV = load_env()
-# Use dedicated Alchemy key for snapshots to avoid exhausting the shared
-# rpc-router quota. Falls back to local router if Alchemy is not configured.
-RPC = (
-    ENV.get("FX_CURRENT_POSITIONS_RPC_URL")
-    or ENV.get("ALCHEMY_RPC_URL")
-    or ENV.get("ETHEREUM_RPC_URL")
-    or "http://127.0.0.1:18545"
-)
+# Hybrid RPC: try all available endpoints in order.
+# Local rpc-router is fastest for bulk scanning (no rate limits).
+# Alchemy and fallback providers handle any requests the router drops.
+RPC_LIST: list[str] = []
+# Local rpc-router first (fast, no rate limits)
+for key in ("RPC_ROUTER_URL", "http://127.0.0.1:18545"):
+    val = key if "://" in key else ENV.get(key)
+    if val and val not in RPC_LIST:
+        RPC_LIST.append(val)
+# Then dedicated fallback providers
+for key in ("ALCHEMY_RPC_URL", "ETHEREUM_RPC_URL", "FX_CURRENT_POSITIONS_RPC_URL"):
+    val = ENV.get(key)
+    if val and val not in RPC_LIST:
+        RPC_LIST.append(val)
+RPC = RPC_LIST[0]  # start with first
 
+
+_rpc_endpoint_index = 0
+
+def _next_rpc() -> str:
+    global _rpc_endpoint_index
+    url = RPC_LIST[_rpc_endpoint_index % len(RPC_LIST)]
+    _rpc_endpoint_index += 1
+    return url
 
 def rpc_post(payload: object, timeout: int = 60) -> object:
     body = json.dumps(payload).encode()
     last: BaseException | None = None
-    for attempt in range(6):
+    for attempt in range(12):
+        url = _next_rpc()
         try:
-            req = urllib.request.Request(RPC, data=body, headers={"content-type": "application/json"})
+            req = urllib.request.Request(url, data=body, headers={"content-type": "application/json"})
             with urllib.request.urlopen(req, timeout=timeout) as response:
+                global _rpc_endpoint_index
+                _rpc_endpoint_index -= 1  # success: don't penalise this endpoint
                 return json.load(response)
         except urllib.error.HTTPError as exc:
             last = exc
-            time.sleep((5 if exc.code == 429 else 0.8) * (attempt + 1))
+            time.sleep((5 if exc.code == 429 else 0.8) * ((attempt // len(RPC_LIST)) + 1))
         except Exception as exc:  # noqa: BLE001 - retry transient RPC/network failures
             last = exc
-            time.sleep(0.8 * (attempt + 1))
+            time.sleep(0.8 * ((attempt // len(RPC_LIST)) + 1))
     raise RuntimeError(f"RPC request failed after retries: {last}")
 
 
