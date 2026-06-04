@@ -106,6 +106,7 @@ export async function POST(request: Request) {
   try {
     let totalPositions = 0;
     const knownWallets = new Set<string>();
+    let poolsProcessed = 0;
 
     // Ensure tables exist
     await client.query(`
@@ -145,7 +146,9 @@ export async function POST(request: Request) {
       // Get next position ID
       const nextIdRaw = decodeUint(await ethCall(pool.address, NEXT_ID_SIG));
       const nextId = Number(nextIdRaw);
+      console.error("[sync-current] "+pool.name+": nextId="+nextId);
       const tokenIds = Array.from({ length: nextId - 1 }, (_, i) => i + 1);
+      console.error("[sync-current] "+pool.name+": scanning "+tokenIds.length+" token IDs");
 
       // Batch get positions
       const posCalls = tokenIds.map((tid) => ({
@@ -196,6 +199,7 @@ export async function POST(request: Request) {
         totalPositions++;
         if (owner.startsWith("0x")) knownWallets.add(owner);
       }
+      poolsProcessed++;
     }
 
     // Record sync
@@ -226,6 +230,7 @@ export async function POST(request: Request) {
       jobName: "sync-current-positions",
       totalPositions,
       walletsSeeded: knownWallets.size,
+      poolsProcessed,
     });
   } catch (error) {
     return NextResponse.json(
