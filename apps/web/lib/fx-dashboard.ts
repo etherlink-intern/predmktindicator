@@ -258,7 +258,7 @@ const traderSelect = `
         when side = 'long' and entry_price_raw is not null and entry_price_raw > 0
           then collateral_value_usd * (oracle_price * 1000000000000000000 / entry_price_raw - 1)
         when side = 'short' and entry_price_raw is not null and entry_price_raw > 0
-          then debt_value_usd * (1 - oracle_price * 1000000000000000000 / entry_price_raw)
+          then debt_value_usd * (oracle_price * 1000000000000000000 / entry_price_raw - 1)
         else 0
       end
     ), 0)::float8 as "unrealizedPnlUsd",
@@ -267,7 +267,7 @@ const traderSelect = `
         when side = 'long' and entry_price_raw is not null and entry_price_raw > 0
           then collateral_value_usd * (oracle_price * 1000000000000000000 / entry_price_raw - 1)
         when side = 'short' and entry_price_raw is not null and entry_price_raw > 0
-          then debt_value_usd * (1 - oracle_price * 1000000000000000000 / entry_price_raw)
+          then debt_value_usd * (oracle_price * 1000000000000000000 / entry_price_raw - 1)
         else 0
       end
     ), 0)
