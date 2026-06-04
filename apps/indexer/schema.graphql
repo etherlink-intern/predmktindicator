@@ -1,0 +1,15 @@
+type SmokeAccount {
+  # Lowercase Ethereum account address.
+  id: ID!
+  balance: BigInt!
+  sentTransferCount: Int!
+  receivedTransferCount: Int!
+}
+
+type SmokeTransfer {
+  # Deterministic synthetic id from from/to/value for the current smoke target.
+  id: ID!
+  from: SmokeAccount!
+  to: SmokeAccount!
+  value: BigInt!
+}

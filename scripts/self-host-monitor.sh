@@ -13,6 +13,7 @@ fi
 
 APP_HEALTH_URL="${PUBLIC_APP_URL:-http://localhost:${WEB_PORT:-3000}}/api/health"
 RPC_ROUTER_HEALTH_URL="http://${RPC_ROUTER_BIND_HOST:-127.0.0.1}:${RPC_ROUTER_PORT:-18545}/health"
+HASURA_HEALTH_URL="http://127.0.0.1:${HASURA_EXTERNAL_PORT:-8088}/healthz"
 failures=0
 
 section() {
@@ -81,6 +82,29 @@ if command -v curl >/dev/null 2>&1; then
   check "GET $RPC_ROUTER_HEALTH_URL" curl -fsS --max-time 10 "$RPC_ROUTER_HEALTH_URL"
 else
   echo "WARN - curl is not installed; skipping RPC router health request"
+fi
+
+section "Optional Envio local indexer"
+for container in fx-trader-profiles-envio-postgres fx-trader-profiles-envio-hasura fx-trader-profiles-envio-indexer; do
+  if ! docker inspect "$container" >/dev/null 2>&1; then
+    echo "SKIP - $container is not created"
+    continue
+  fi
+  state="$(docker inspect -f '{{.State.Status}}' "$container")"
+  health="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}' "$container")"
+  exit_code="$(docker inspect -f '{{.State.ExitCode}}' "$container")"
+  echo "$container: state=$state health=$health exit=$exit_code"
+  if [ "$container" = "fx-trader-profiles-envio-indexer" ] && [ "$state" = "exited" ] && [ "$exit_code" = "0" ]; then
+    echo "OK  - bounded Envio smoke indexer completed successfully"
+    continue
+  fi
+  if [ "$state" != "running" ] || [ "$health" = "unhealthy" ]; then
+    failures=$((failures + 1))
+  fi
+done
+
+if command -v curl >/dev/null 2>&1 && docker inspect fx-trader-profiles-envio-hasura >/dev/null 2>&1; then
+  check "GET $HASURA_HEALTH_URL" curl -fsS --max-time 10 "$HASURA_HEALTH_URL"
 fi
 
 section "Resource snapshot"

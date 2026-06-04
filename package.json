@@ -13,6 +13,16 @@
     "rpc-router:test": "pnpm --filter @fx-trader-profiles/rpc-router test",
     "db:push": "echo \"TODO: add Drizzle migrations in Phase 0\"",
     "scripts:discover-contracts": "pnpm discover:contracts",
-    "discover:contracts": "echo \"TODO: implement workers/discover-contracts.ts in Phase 2\""
+    "discover:contracts": "echo \"TODO: implement workers/discover-contracts.ts in Phase 2\"",
+    "indexer:codegen": "pnpm --filter @fx-trader-profiles/indexer codegen",
+    "indexer:dev": "docker compose --env-file .env -f docker-compose.yml -f docker-compose.indexer.yml up -d --build rpc-router envio-postgres envio-hasura envio-indexer",
+    "indexer:start": "pnpm --filter @fx-trader-profiles/indexer start",
+    "indexer:test": "pnpm --filter @fx-trader-profiles/indexer test",
+    "indexer:up": "docker compose --env-file .env -f docker-compose.yml -f docker-compose.indexer.yml up -d --build rpc-router envio-postgres envio-hasura envio-indexer",
+    "indexer:down": "docker compose --env-file .env -f docker-compose.yml -f docker-compose.indexer.yml stop envio-indexer envio-hasura envio-postgres",
+    "indexer:logs": "docker compose --env-file .env -f docker-compose.yml -f docker-compose.indexer.yml logs -f envio-indexer",
+    "indexer:ps": "docker compose --env-file .env -f docker-compose.yml -f docker-compose.indexer.yml ps rpc-router envio-postgres envio-hasura envio-indexer",
+    "indexer:build": "pnpm --filter @fx-trader-profiles/indexer build",
+    "indexer:verify": "scripts/verify-envio-smoke.sh"
   }
 }

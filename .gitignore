@@ -6,6 +6,8 @@ node_modules/
 .next/
 out/
 dist/
+build/
+.envio/
 
 # Production/local env files
 .env
