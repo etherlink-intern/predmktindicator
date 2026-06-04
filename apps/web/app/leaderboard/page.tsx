@@ -1,4 +1,5 @@
-import { formatDate, formatUsd, getDashboardData } from "../../lib/fx-dashboard";
+import { formatUsd, getDashboardData } from "../../lib/fx-dashboard";
+import { LocalTime } from "../local-time";
 import { LeaderboardTable } from "./leaderboard-table";
 
 const numberFormatter = new Intl.NumberFormat("en-US");
@@ -14,7 +15,7 @@ export default async function LeaderboardPage() {
       <h1>Trader leaderboard</h1>
       <p className="muted">
         Wallets ranked by current notional value by default. Use the filters and sortable columns to explore active
-        f(x) wallets by exposure, position count, equity, debt, and risk. Snapshot: {formatDate(dashboard.generatedAt)}.
+        f(x) wallets by exposure, position count, equity, debt, and risk. Snapshot: <LocalTime date={dashboard.generatedAt} />.
       </p>
 
       <div className="card-grid compact">

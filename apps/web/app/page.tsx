@@ -1,5 +1,6 @@
-import { displayInstrument, displayPool, formatDate, formatPercent, formatUsd, getDashboardData } from "../lib/fx-dashboard";
+import { displayInstrument, displayPool, formatPercent, formatUsd, getDashboardData } from "../lib/fx-dashboard";
 import { LastRefreshedCounter } from "./last-refreshed";
+import { LocalTime } from "./local-time";
 
 const numberFormatter = new Intl.NumberFormat("en-US");
 const compactFormatter = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 });
@@ -230,7 +231,7 @@ export default async function HomePage() {
     ["Active wallets", numberFormatter.format(dashboard.totals.uniqueTraders), "Wallets that currently own tracked positions"],
     ["Indexed events", numberFormatter.format(dashboard.totals.syncedEvents), "Synced transfers, cashflows, and pool snapshots from Envio"],
     ["Current equity", formatUsd(dashboard.totals.equityUsd), "Estimated current equity across tracked positions"],
-    ["Last updated", formatDate(dashboard.generatedAt), "Most recent dashboard refresh"]
+    ["Last updated", null, null]
   ];
 
   return (
@@ -245,11 +246,19 @@ export default async function HomePage() {
 
       <div className="card-grid" style={{ marginTop: "16px" }}>
         {snapshotCards.map(([label, value, detail]) => (
+          label === "Last updated" && dashboard.generatedAt ? (
+            <article className="card" key={label}>
+              <p className="muted">{label}</p>
+              <h2><LocalTime date={dashboard.generatedAt} /></h2>
+              <p className="muted small">Most recent dashboard refresh</p>
+            </article>
+          ) : (
           <article className="card" key={label}>
             <p className="muted">{label}</p>
             <h2>{value}</h2>
             <p className="muted small">{detail}</p>
           </article>
+          )
         ))}
       </div>
 

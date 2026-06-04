@@ -273,8 +273,16 @@ const traderSelect = `
           then debt_value_usd * (1 - entry_price_raw / (oracle_price * 1000000000000000000))
         else 0
       end
-    ), 0)::float8 + coalesce(sum(realized_pnl_raw * oracle_price / 1000000000000000000), 0)::float8 as "totalPnlUsd",
-    coalesce(sum(total_fees_raw * oracle_price / 1000000000000000000), 0)::float8 as "feesUsd",
+    ), 0)::float8 + coalesce(sum(
+      case when side = 'short' then realized_pnl_raw / 1000000000000000000
+           else realized_pnl_raw * oracle_price / 1000000000000000000
+      end
+    ), 0)::float8 as "totalPnlUsd",
+    coalesce(sum(
+      case when side = 'short' then total_fees_raw / 1000000000000000000
+           else total_fees_raw * oracle_price / 1000000000000000000
+      end
+    ), 0)::float8 as "feesUsd",
     coalesce(bool_or(entry_price_raw is not null and entry_price_raw > 0), false) or coalesce(bool_or(realized_pnl_raw != 0), false) as "hasPositionHistory"
   from public.fx_current_positions
 `;
@@ -532,8 +540,18 @@ export async function getTraderProfile(address: string): Promise<TraderProfile |
              coalesce(p.pool_name, h.pool_address) as "poolName",
              coalesce(p.side, 'unknown') as "side",
              h.position_id::text as "tokenId",
-             coalesce((h.realized_pnl_raw * coalesce(p.oracle_price, 0) / 1000000000000000000), 0)::float8 as "realizedPnlUsd",
-             coalesce((h.total_fees_raw * coalesce(p.oracle_price, 0) / 1000000000000000000), 0)::float8 as "feesUsd",
+             coalesce(
+               case when coalesce(p.side, 'long') = 'short'
+                 then h.realized_pnl_raw / 1000000000000000000
+                 else h.realized_pnl_raw * coalesce(p.oracle_price, 0) / 1000000000000000000
+               end,
+             0)::float8 as "realizedPnlUsd",
+             coalesce(
+               case when coalesce(p.side, 'long') = 'short'
+                 then h.total_fees_raw / 1000000000000000000
+                 else h.total_fees_raw * coalesce(p.oracle_price, 0) / 1000000000000000000
+               end,
+             0)::float8 as "feesUsd",
              h.cashflow_event_count as "cashflowEventCount",
              h.first_cashflow_block as "firstBlock",
              h.last_cashflow_block as "lastBlock",

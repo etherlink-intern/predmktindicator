@@ -2,11 +2,11 @@ import { notFound } from "next/navigation";
 import {
   displayPool,
   formatAddress,
-  formatDate,
   formatPercent,
   formatUsd,
   getTraderProfile
 } from "../../../lib/fx-dashboard";
+import { LocalTime } from "../../local-time";
 
 const nf = new Intl.NumberFormat("en-US");
 
@@ -51,7 +51,7 @@ export default async function TraderPage({ params }: TraderPageProps) {
         <div style={{ textAlign: "right" }}>
           <span style={{ fontSize: 14, fontWeight: 700, color: netColor }}>{netLabel}</span>
           <p className="muted small" style={{ marginTop: 2 }}>
-            {s.positions} position{s.positions !== 1 ? "s" : ""} · {formatDate(profile.generatedAt)}
+            {s.positions} position{s.positions !== 1 ? "s" : ""} · <LocalTime date={profile.generatedAt} />
           </p>
         </div>
       </div>
@@ -105,7 +105,7 @@ export default async function TraderPage({ params }: TraderPageProps) {
       {/* Open positions table */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
         <h2 style={{ fontSize: 14, fontWeight: 600 }}>Open positions <span className="muted small" style={{ fontWeight: 400 }}>({profile.positions.length})</span></h2>
-        <span className="muted small">Snapshot: {formatDate(profile.generatedAt)}</span>
+        <span className="muted small">Snapshot: <LocalTime date={profile.generatedAt} /></span>
       </div>
 
       <div className="table-wrap" style={{ marginTop: 0 }}>
