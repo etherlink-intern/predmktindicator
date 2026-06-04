@@ -116,15 +116,19 @@ table {
 th,
 td {
   border-bottom: 1px solid rgba(148, 163, 184, 0.16);
-  padding: 5px 7px;
+  padding: 3px 7px;
   text-align: left;
 }
 
 th {
+  background: rgba(17, 24, 39, 0.96);
   color: var(--muted);
   font-size: 11px;
   letter-spacing: 0.06em;
+  position: sticky;
+  top: 0;
   text-transform: uppercase;
+  z-index: 2;
 }
 
 td {
@@ -201,10 +205,10 @@ tr:last-child td {
 
 .risk-cell {
   border-radius: 10px;
-  display: inline-grid;
-  gap: 1px;
-  min-width: 88px;
-  padding: 4px 6px;
+  display: inline-flex;
+  justify-content: flex-end;
+  min-width: 58px;
+  padding: 3px 6px;
   text-align: right;
 }
 
@@ -283,15 +287,52 @@ tr:last-child td {
 .pill-btc-short .pill-side  { background: #ef4444; color: #450a0a; }
 
 .leaderboard-table {
-  min-width: 1100px;
+  min-width: 980px;
+}
+
+.leaderboard-table tr {
+  height: 42px;
+}
+
+.leaderboard-table tbody tr:hover {
+  background: rgba(56, 189, 248, 0.055);
+}
+
+.rank-cell {
+  width: 58px;
+  white-space: nowrap;
+}
+
+.wallet-cell {
+  white-space: nowrap;
+}
+
+.wallet-link {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.position-badge {
+  border: 1px solid rgba(56, 189, 248, 0.34);
+  border-radius: 999px;
+  color: #e0f2fe;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+  min-width: 24px;
+  padding: 3px 5px;
+  text-align: center;
 }
 
 .net-exposure {
   border-radius: 10px;
-  display: inline-grid;
-  gap: 1px;
-  min-width: 80px;
-  padding: 4px 6px;
+  display: inline-flex;
+  justify-content: flex-end;
+  min-width: 82px;
+  padding: 3px 6px;
   text-align: right;
 }
 

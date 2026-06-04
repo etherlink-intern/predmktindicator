@@ -172,7 +172,7 @@ export function LeaderboardTable({ traders }: LeaderboardTableProps) {
         <table className="leaderboard-table">
           <thead>
             <tr>
-              <th>Rank</th>
+              <th className="rank-cell">Rank</th>
               <th>Wallet</th>
               {columns.map((column) => (
                 <th className={column.align === "right" ? "numeric" : undefined} key={column.key}>
@@ -187,31 +187,44 @@ export function LeaderboardTable({ traders }: LeaderboardTableProps) {
                   </button>
                 </th>
               ))}
-              <th>Instruments</th>
             </tr>
           </thead>
           <tbody>
             {filtered.map((trader, index) => {
               const headroom = Math.max(0, 1 - trader.maxDebtRatio);
+              const instruments = instrumentBreakdown(trader)
+                .map((item) => `${item.asset} ${item.side}: ${item.count}`)
+                .join(" / ");
+              const rowTitle = [
+                `${trader.owner}`,
+                `${trader.positions.toLocaleString()} open positions across ${trader.pools.toLocaleString()} markets`,
+                `Notional ${formatUsd(trader.notionalValueUsd)}`,
+                `Equity ${formatUsd(trader.equityUsd)}`,
+                `Unrealized PnL ${trader.hasPositionHistory ? formatUsd(trader.unrealizedPnlUsd) : "not available"}`,
+                `Total PnL ${trader.hasPositionHistory ? formatUsd(trader.totalPnlUsd) : "not available"}`,
+                `Fees paid ${formatUsd(getFeesUsd(trader))}`,
+                instruments ? `Instruments: ${instruments}` : null
+              ].filter(Boolean).join("\n");
               return (
-                <tr key={trader.owner}>
-                  <td>#{index + 1}</td>
-                  <td>
-                    <a className="mono" href={`/traders/${trader.owner}`} title={trader.owner}>
-                      {formatAddress(trader.owner)}
+                <tr key={trader.owner} title={rowTitle}>
+                  <td className="rank-cell">#{index + 1}</td>
+                  <td className="wallet-cell">
+                    <a className="wallet-link mono" href={`/traders/${trader.owner}`} title={trader.owner}>
+                      <span>{formatAddress(trader.owner)}</span>
+                      <span className="position-badge" title={`${trader.positions.toLocaleString()} open positions`}>
+                        {formatPositionBadge(trader.positions)}
+                      </span>
                     </a>
                   </td>
-                  <td className="numeric">{formatUsd(trader.notionalValueUsd)}</td>
-                  <td className="numeric">{trader.positions.toLocaleString()}</td>
-                  <td className="numeric">{formatUsd(trader.equityUsd)}</td>
-                  <td className="numeric">{trader.hasPositionHistory ? formatUsd(trader.unrealizedPnlUsd) : "—"}</td>
-                  <td className="numeric">{trader.hasPositionHistory ? formatUsd(trader.totalPnlUsd) : "—"}</td>
-                  <td className="numeric">{formatUsd(trader.feesUsd)}</td>
-                  <td className="numeric">{formatUsd(trader.debtValueUsd)}</td>
+                  <td className="numeric" title={formatUsd(trader.notionalValueUsd)}>{formatCompactUsd(trader.notionalValueUsd)}</td>
+                  <td className="numeric" title={formatUsd(trader.equityUsd)}>{formatCompactUsd(trader.equityUsd)}</td>
+                  <td className="numeric" title={trader.hasPositionHistory ? formatUsd(trader.unrealizedPnlUsd) : "PnL history unavailable"}>
+                    {formatPnl(trader.unrealizedPnlUsd, trader.hasPositionHistory)}
+                  </td>
+                  <td className="numeric" title={formatUsd(trader.debtValueUsd)}>{formatCompactUsd(trader.debtValueUsd)}</td>
                   <td className="numeric">
-                    <span className={riskTone(trader.maxDebtRatio)}>
-                      <strong>{formatPercent(trader.maxDebtRatio)}</strong>
-                      <small>{formatPercent(headroom)} to 100%</small>
+                    <span className={riskTone(trader.maxDebtRatio)} title={`${formatPercent(trader.maxDebtRatio)} debt ratio / ${formatPercent(headroom)} to 100%`}>
+                      {formatPercent(trader.maxDebtRatio)}
                     </span>
                   </td>
                   <td className="numeric">
@@ -227,15 +240,6 @@ export function LeaderboardTable({ traders }: LeaderboardTableProps) {
                       netUsd={trader.btcNetExposureUsd}
                       shortUsd={trader.btcShortExposureUsd}
                     />
-                  </td>
-                  <td className="numeric">{trader.pools.toLocaleString()}</td>
-                  <td className="instrument-list">
-                    {instrumentBreakdown(trader).map((item) => (
-                      <span className={item.pillClass} key={`${item.asset}-${item.side}`}>
-                        <span className="pill-asset">{item.asset}</span>
-                        <span className="pill-side">{item.side} {item.count.toLocaleString()}</span>
-                      </span>
-                    ))}
                   </td>
                 </tr>
               );
