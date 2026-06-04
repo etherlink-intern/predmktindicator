@@ -134,8 +134,10 @@ export async function POST(request: Request) {
       );
     `);
 
-    // Truncate and re-insert
-    await client.query("truncate table public.fx_current_positions");
+    // Build the next snapshot in a temp table first. Do not truncate the
+    // live table until RPC scanning has produced a sane non-empty snapshot;
+    // otherwise a transient RPC/container networking issue can wipe the UI.
+    await client.query("create temp table fx_current_positions_next (like public.fx_current_positions including defaults)");
 
     for (const pool of POOLS) {
       // Get price oracle
@@ -185,13 +187,8 @@ export async function POST(request: Request) {
         const { collateralValueUsd, debtValueUsd, equityUsd } = computeValuation(pool.side, n.rawCollateral, n.rawDebt, price);
 
         await client.query(
-          `insert into public.fx_current_positions(pool_name, pool_address, side, collateral, token_id, owner, raw_collateral, raw_debt, oracle_price, collateral_value_usd, debt_value_usd, equity_usd, debt_ratio, updated_at)
-           values ($1,$2,$3,$4,$5::numeric,$6,$7::numeric,$8::numeric,$9,$10,$11,$12,$13,now())
-           on conflict (pool_address, token_id) do update set
-             pool_name = excluded.pool_name, side = excluded.side, collateral = excluded.collateral, owner = excluded.owner,
-             raw_collateral = excluded.raw_collateral, raw_debt = excluded.raw_debt, oracle_price = excluded.oracle_price,
-             collateral_value_usd = excluded.collateral_value_usd, debt_value_usd = excluded.debt_value_usd,
-             equity_usd = excluded.equity_usd, debt_ratio = excluded.debt_ratio, updated_at = now()`,
+          `insert into pg_temp.fx_current_positions_next(pool_name, pool_address, side, collateral, token_id, owner, raw_collateral, raw_debt, oracle_price, collateral_value_usd, debt_value_usd, equity_usd, debt_ratio, updated_at)
+           values ($1,$2,$3,$4,$5::numeric,$6,$7::numeric,$8::numeric,$9,$10,$11,$12,$13,now())`,
           [pool.name, pool.address.toLowerCase(), pool.side, pool.collateral, n.tokenId, owner,
            String(n.rawCollateral), String(n.rawDebt), price.toFixed(18),
            collateralValueUsd.toFixed(12), debtValueUsd.toFixed(12), equityUsd.toFixed(12), debtRatio.toFixed(18)]
@@ -200,6 +197,42 @@ export async function POST(request: Request) {
         if (owner.startsWith("0x")) knownWallets.add(owner);
       }
       poolsProcessed++;
+    }
+
+    const minimumPositions = Number(process.env.MIN_CURRENT_POSITION_SYNC_ROWS || "100");
+    if (totalPositions < minimumPositions) {
+      return NextResponse.json(
+        {
+          ok: false,
+          jobName: "sync-current-positions",
+          error: `Refusing to replace current-position snapshot: only ${totalPositions} rows found, below minimum ${minimumPositions}`,
+          totalPositions,
+          walletsSeeded: knownWallets.size,
+          poolsProcessed,
+        },
+        { status: 502 },
+      );
+    }
+
+    await client.query("begin");
+    try {
+      await client.query("truncate table public.fx_current_positions");
+      await client.query(`
+        insert into public.fx_current_positions(
+          pool_name, pool_address, side, collateral, token_id, owner,
+          raw_collateral, raw_debt, oracle_price, collateral_value_usd,
+          debt_value_usd, equity_usd, debt_ratio, updated_at
+        )
+        select
+          pool_name, pool_address, side, collateral, token_id, owner,
+          raw_collateral, raw_debt, oracle_price, collateral_value_usd,
+          debt_value_usd, equity_usd, debt_ratio, updated_at
+        from pg_temp.fx_current_positions_next
+      `);
+      await client.query("commit");
+    } catch (error) {
+      await client.query("rollback").catch(() => {});
+      throw error;
     }
 
     // Record sync

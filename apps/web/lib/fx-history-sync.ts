@@ -743,7 +743,11 @@ function usdCurrentPrice(pool: OfficialPoolConfig, position: Record<string, unkn
 
 function orderPositionSize(pool: OfficialPoolConfig, row: Record<string, unknown>) {
   if (pool.side === "short") {
-    return (toFiniteNumber(row.position_debts_raw) / pool.precision) * (toFiniteNumber(row.price_rate_raw) / 1e18);
+    // Official f(x) order stream uses asset decimals for deltaDebts, but
+    // positionDebts is normalized to 1e18. WBTC shorts therefore need
+    // deltaDebts / 1e8 for order contribution, but positionDebts / 1e18
+    // for current/remaining size. Using 1e8 here creates 1e10-scale PnL.
+    return (toFiniteNumber(row.position_debts_raw) / 1e18) * (toFiniteNumber(row.price_rate_raw) / 1e18);
   }
   return toFiniteNumber(row.position_colls_raw) / pool.precision;
 }
@@ -835,7 +839,7 @@ async function updateUiPnlFromOfficialOrders(client: Client) {
 
     const currentPrice = usdCurrentPrice(pool, position, current);
     const currentSize = pool.side === "short"
-      ? (toFiniteNumber(position.debts_raw) / pool.precision) * (toFiniteNumber(position.price_rate_raw) / 1e18)
+      ? (toFiniteNumber(position.debts_raw) / 1e18) * (toFiniteNumber(position.price_rate_raw) / 1e18)
       : toFiniteNumber(current.raw_collateral) / pool.precision;
     const uiPnl = entryPrice > 0 && currentPrice > 0
       ? (currentPrice - entryPrice) * (pool.side === "short" ? -1 : 1) * currentSize
