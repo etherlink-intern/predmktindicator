@@ -12,6 +12,19 @@ dist/
 .env.*
 !.env.example
 
+# Secrets, private keys, and local credentials
+*.pem
+*.key
+*.p12
+*.pfx
+*.secret
+id_rsa
+id_rsa.*
+id_ed25519
+id_ed25519.*
+secrets/
+credentials/
+
 # Local runtime data
 var/
 

@@ -317,7 +317,7 @@ git commit -m "Add app database schema for indexed events"
 ```env
 INDEXER_PROVIDER=envio
 INDEXER_GRAPHQL_URL=http://indexer:8080/v1/graphql
-INDEXER_HASURA_ADMIN_SECRET=testing
+INDEXER_HASURA_ADMIN_SECRET=${GENERATED_INDEXER_HASURA_ADMIN_SECRET}
 RPC_ROUTER_URL=http://rpc-router:8545
 ```
 
