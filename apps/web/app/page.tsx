@@ -171,6 +171,156 @@ function ExposureBiasRow({
   );
 }
 
+
+function formatCompactUsd(value: number) {
+  const sign = value < 0 ? "-" : "";
+  const absolute = Math.abs(value);
+  if (absolute >= 1_000_000_000) return `${sign}$${(absolute / 1_000_000_000).toFixed(2).replace(/\.00$/, "")}B`;
+  if (absolute >= 1_000_000) return `${sign}$${(absolute / 1_000_000).toFixed(2).replace(/\.00$/, "")}M`;
+  if (absolute >= 1_000) return `${sign}$${Math.round(absolute / 1_000).toLocaleString()}K`;
+  return `${sign}$${Math.round(absolute).toLocaleString()}`;
+}
+
+function formatTime(value: string | null) {
+  if (!value) return "—";
+  return new Intl.DateTimeFormat("en", { hour: "numeric", minute: "2-digit" }).format(new Date(value));
+}
+
+function MarketOverviewSkeleton() {
+  return (
+    <div className="market-terminal skeleton-terminal" aria-label="Loading market overview">
+      <div className="market-hero-grid">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <div className="market-panel skeleton-panel" key={index}>
+            <span className="skeleton-line short" />
+            <span className="skeleton-line value" />
+            <span className="skeleton-line" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function MarketOverviewEmptyState() {
+  return (
+    <div className="market-terminal empty-terminal">
+      <div>
+        <p className="eyebrow">Market Overview</p>
+        <h2>Position book snapshot</h2>
+      </div>
+      <p className="muted">Market data will appear after the next successful position snapshot.</p>
+    </div>
+  );
+}
+
+function MarketOverviewTerminal({
+  openInterestUsd,
+  longUsd,
+  shortUsd,
+  debtUsd,
+  riskPositions,
+  riskNotionalUsd,
+  wallets,
+  events,
+  updatedAt,
+  hasSnapshot,
+}: {
+  openInterestUsd: number;
+  longUsd: number;
+  shortUsd: number;
+  debtUsd: number;
+  riskPositions: number;
+  riskNotionalUsd: number;
+  wallets: number;
+  events: number;
+  updatedAt: string | null;
+  hasSnapshot: boolean;
+}) {
+  if (!hasSnapshot) return <MarketOverviewEmptyState />;
+
+  const positioningTotal = longUsd + shortUsd || 1;
+  const longPct = (longUsd / positioningTotal) * 100;
+  const shortPct = (shortUsd / positioningTotal) * 100;
+  const debtUtilization = openInterestUsd > 0 ? Math.min((debtUsd / openInterestUsd) * 100, 100) : 0;
+  const riskShare = openInterestUsd > 0 ? (riskNotionalUsd / openInterestUsd) * 100 : 0;
+
+  return (
+    <section className="market-terminal" aria-label="Market overview position book snapshot">
+      <div className="section-header market-terminal-header">
+        <div>
+          <p className="eyebrow">Market Overview</p>
+          <h2>Position Book Snapshot</h2>
+        </div>
+        <span className="terminal-chip" title="Current open-position snapshot plus indexed event history">
+          live book / indexed history
+        </span>
+      </div>
+
+      <div className="market-hero-grid">
+        <article className="market-panel market-panel-primary" title="Estimated exposure across tracked active positions.">
+          <p className="market-label">Open Interest</p>
+          <h3>{formatCompactUsd(openInterestUsd)}</h3>
+          <div className="market-micro-row">
+            <span>tracked notional</span>
+            <span className="neutral-dot">snapshot</span>
+          </div>
+        </article>
+
+        <article className="market-panel market-panel-bias" title={`Long ${formatUsd(longUsd)} / Short ${formatUsd(shortUsd)}`}>
+          <div className="panel-topline">
+            <p className="market-label">Position Bias</p>
+            <span className="bias-badge">{longPct.toFixed(1)}% Long Bias</span>
+          </div>
+          <div className="bias-values">
+            <span><b>Long</b> {formatCompactUsd(longUsd)}</span>
+            <span><b>Short</b> {formatCompactUsd(shortUsd)}</span>
+          </div>
+          <div className="dominance-track" aria-label={`Long ${longPct.toFixed(1)}%, Short ${shortPct.toFixed(1)}%`}>
+            <span className="dominance-long" style={{ width: `${longPct}%` }} />
+            <span className="dominance-short" style={{ width: `${shortPct}%` }} />
+          </div>
+          <div className="market-micro-row">
+            <span>long {longPct.toFixed(1)}%</span>
+            <span>short {shortPct.toFixed(1)}%</span>
+          </div>
+        </article>
+
+        <article className="market-panel" title={`Tracked debt ${formatUsd(debtUsd)} / Open interest ${formatUsd(openInterestUsd)}`}>
+          <p className="market-label">Debt Utilization</p>
+          <h3>{formatCompactUsd(debtUsd)}</h3>
+          <div className="utilization-line">
+            <span style={{ width: `${debtUtilization}%` }} />
+          </div>
+          <div className="market-micro-row">
+            <span>{debtUtilization.toFixed(1)}% of OI</span>
+            <span>tracked debt</span>
+          </div>
+        </article>
+
+        <article className="market-panel market-panel-risk" title={`${formatUsd(riskNotionalUsd)} in tracked positions at or above an 80% debt ratio.`}>
+          <p className="market-label">Risk Watchlist</p>
+          <h3>{numberFormatter.format(riskPositions)}</h3>
+          <div className="risk-copy">
+            <strong>{formatCompactUsd(riskNotionalUsd)}</strong>
+            <span>above 80% debt ratio</span>
+          </div>
+          <div className="market-micro-row">
+            <span>{riskShare.toFixed(1)}% of OI</span>
+            <span>watchlist notional</span>
+          </div>
+        </article>
+      </div>
+
+      <div className="market-status-bar" aria-label="Secondary market status">
+        <span title="Known tracked wallets"><b>Wallets</b> {numberFormatter.format(wallets)}</span>
+        <span title="Indexed cashflow events"><b>Events</b> {numberFormatter.format(events)}</span>
+        <span title="Last current-position snapshot"><b>Updated</b> {formatTime(updatedAt)}</span>
+      </div>
+    </section>
+  );
+}
+
 export default async function HomePage() {
   const dashboard = await getDashboardData();
 
@@ -200,46 +350,6 @@ export default async function HomePage() {
     ["Last updated", formatDate(dashboard.generatedAt), "Most recent dashboard refresh"]
   ];
 
-  const globalTrackers = [
-    [
-      "Tracked open interest",
-      formatUsd(dashboard.totals.trackedOpenInterestUsd),
-      "Estimated exposure across tracked active positions."
-    ],
-    [
-      "Long-side exposure",
-      formatUsd(dashboard.totals.longNotionalUsd),
-      "Estimated current exposure for tracked long positions."
-    ],
-    [
-      "Short-side exposure",
-      formatUsd(dashboard.totals.shortBorrowedExposureUsd),
-      "Estimated current exposure for tracked short positions."
-    ],
-    [
-      "Tracked debt",
-      formatUsd(dashboard.totals.longDebtUsd),
-      "Debt attached to tracked active positions."
-    ],
-    [
-      "Risk watchlist",
-      `${numberFormatter.format(dashboard.totals.riskQueuePositions80)} positions`,
-      `${formatUsd(dashboard.totals.riskQueueNotional80Usd)} in tracked positions at or above an 80% debt ratio.`
-    ],
-    [
-      "Tracked wallets",
-      numberFormatter.format(dashboard.walletMaintenance.knownWallets),
-      dashboard.walletMaintenance.lastMaintainedAt
-        ? `Tracked wallet list refreshed ${formatDate(dashboard.walletMaintenance.lastMaintainedAt)}.`
-        : "Wallet tracking is initializing."
-    ],
-    [
-      "Event history",
-      `${numberFormatter.format(dashboard.totals.syncedCashflows)} cashflows`,
-      `${numberFormatter.format(dashboard.totals.syncedTransfers)} transfers and ${numberFormatter.format(dashboard.totals.syncedSnapshots)} pool snapshots synced.`
-    ]
-  ];
-
   return (
     <section>
       <p className="eyebrow">f(x) Protocol</p>
@@ -260,85 +370,18 @@ export default async function HomePage() {
         ))}
       </div>
 
-      {/* Global Exposure Widget */}
-      <div className="section-header">
-        <div>
-          <p className="eyebrow">Positioning & crowding</p>
-          <h2>Global exposure by instrument</h2>
-        </div>
-      </div>
-
-      <article
-        className="card"
-        style={{
-          padding: "4px 20px 8px",
-          fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace",
-        }}
-      >
-        {/* Header row */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            padding: "8px 0 4px",
-            borderBottom: "1px solid rgba(148,163,184,0.10)",
-            fontSize: "10px",
-            color: "var(--muted)",
-            letterSpacing: "0.08em",
-            textTransform: "uppercase",
-          }}
-        >
-          <span>Instrument</span>
-          <span style={{ textAlign: "right" }}>Net exposure</span>
-        </div>
-
-        <ExposureBiasRow label="ETH" longUsd={ethLong} shortUsd={ethShort} />
-        <ExposureBiasRow label="BTC" longUsd={btcLong} shortUsd={btcShort} />
-
-        {/* Footer summary */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            paddingTop: "10px",
-            fontSize: "11px",
-            color: "var(--muted)",
-            flexWrap: "wrap",
-            gap: "8px",
-          }}
-        >
-          <span>
-            Total OI: <b style={{ color: "#e2e8f0" }}>{formatUsd(totalOi)}</b>
-          </span>
-          <span>
-            Long: <b style={{ color: "rgba(187,247,208,0.85)" }}>{formatUsd(totalLong)}</b> ({(totalLong / totalOi * 100).toFixed(1)}%)
-          </span>
-          <span>
-            Short: <b style={{ color: "rgba(254,202,202,0.85)" }}>{formatUsd(totalShort)}</b> ({(totalShort / totalOi * 100).toFixed(1)}%)
-          </span>
-          <span>
-            Ratio: <b style={{ color: "#e2e8f0" }}>{(totalLong / (totalShort || 1)).toFixed(1)}x</b>
-          </span>
-        </div>
-      </article>
-
-      <div className="section-header">
-        <div>
-          <p className="eyebrow">Market overview</p>
-          <h2>Position book snapshot</h2>
-        </div>
-      </div>
-
-      <div className="card-grid compact">
-        {globalTrackers.map(([label, value, detail]) => (
-          <article className="card" key={label}>
-            <p className="muted">{label}</p>
-            <h2>{value}</h2>
-            <p className="muted small">{detail}</p>
-          </article>
-        ))}
-      </div>
+      <MarketOverviewTerminal
+        openInterestUsd={dashboard.totals.trackedOpenInterestUsd || totalOi}
+        longUsd={dashboard.totals.longNotionalUsd || totalLong}
+        shortUsd={dashboard.totals.shortBorrowedExposureUsd || totalShort}
+        debtUsd={dashboard.totals.longDebtUsd}
+        riskPositions={dashboard.totals.riskQueuePositions80}
+        riskNotionalUsd={dashboard.totals.riskQueueNotional80Usd}
+        wallets={dashboard.walletMaintenance.knownWallets || dashboard.totals.uniqueTraders}
+        events={dashboard.totals.syncedCashflows}
+        updatedAt={dashboard.generatedAt}
+        hasSnapshot={dashboard.hasSnapshot}
+      />
 
       {!dashboard.hasSnapshot ? (
         <div className="card warning">
