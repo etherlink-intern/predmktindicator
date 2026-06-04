@@ -250,21 +250,20 @@ def scan_positions(csv_path: Path) -> int:
             if raw_collateral != 0 or raw_debt != 0:
                 nonzero.append((token_id, raw_collateral, raw_debt))
         owner_confirmed = 0
-        owner_calls = [(f"{pool_name}:owner:{token_id}", address, OWNER_OF + word(token_id)) for token_id, _, _ in nonzero]
-        debt_ratio_calls = [
-            (f"{pool_name}:debt_ratio:{token_id}", address, GET_POSITION_DEBT_RATIO + word(token_id))
-            for token_id, _, _ in nonzero
-        ]
-        owner_results = batch_eth_call(owner_calls, batch_size=50)
-        debt_ratio_results = batch_eth_call(debt_ratio_calls, batch_size=50)
-
+        # Use individual calls with hybrid RPC rotation for reliability
         for token_id, raw_collateral, raw_debt in nonzero:
-            owner_item = owner_results.get(f"{pool_name}:owner:{token_id}", {})
-            owner = None if "error" in owner_item else decode_owner(owner_item.get("result"))
+            try:
+                raw = eth_call(address, OWNER_OF + word(token_id))
+            except Exception:
+                continue
+            owner = decode_owner(raw)
             if not owner:
                 continue
-            debt_ratio_item = debt_ratio_results.get(f"{pool_name}:debt_ratio:{token_id}", {})
-            debt_ratio_raw = None if "error" in debt_ratio_item else decode_uint(debt_ratio_item.get("result"))
+            try:
+                dr_raw = eth_call(address, GET_POSITION_DEBT_RATIO + word(token_id))
+            except Exception:
+                dr_raw = None
+            debt_ratio_raw = decode_uint(dr_raw) if dr_raw else None
             debt_ratio = Decimal(debt_ratio_raw or 0) / WAD
             collateral_value, debt_value, equity = position_valuation(side, raw_collateral, raw_debt, price)
             owner_confirmed += 1
