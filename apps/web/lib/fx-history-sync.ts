@@ -475,8 +475,8 @@ async function syncSnapshots(client: Client, table: string | null) {
 }
 
 const OFFICIAL_POSITION_QUERY = `
-  query Positions($first: Int!, $skip: Int!) {
-    positions(first: $first, skip: $skip, orderBy: blockNumber, orderDirection: asc) {
+  query Positions($ids: [String!]!) {
+    positions(first: 1000, where: { id_in: $ids }, orderBy: blockNumber, orderDirection: asc) {
       timestamp
       price
       priceRate
@@ -513,11 +513,12 @@ const OFFICIAL_POSITION_QUERY = `
   }
 `;
 
-async function fetchOfficialPositions(pool: OfficialPoolConfig, first: number, skip: number): Promise<OfficialPosition[]> {
+async function fetchOfficialPositions(pool: OfficialPoolConfig, ids: string[]): Promise<OfficialPosition[]> {
+  if (ids.length === 0) return [];
   const response = await fetch(pool.endpoint, {
     method: "POST",
     headers: { "content-type": "application/json", "user-agent": "fx-trader-profiles/official-order-sync" },
-    body: JSON.stringify({ query: OFFICIAL_POSITION_QUERY, variables: { first, skip } }),
+    body: JSON.stringify({ query: OFFICIAL_POSITION_QUERY, variables: { ids } }),
   });
   const payload = (await response.json().catch(() => ({}))) as {
     data?: { positions?: OfficialPosition[] };
@@ -532,12 +533,17 @@ async function fetchOfficialPositions(pool: OfficialPoolConfig, first: number, s
 async function syncOfficialFxOrders(client: Client) {
   let positionCount = 0;
   let orderCount = 0;
-  const pageSize = 500;
+  const chunkSize = 5;
 
-  for (const pool of OFFICIAL_POOLS) {
-    for (let skip = 0; ; skip += pageSize) {
-      const positions = await fetchOfficialPositions(pool, pageSize, skip);
-      if (positions.length === 0) break;
+  for (const pool of OFFICIAL_POOLS.filter((item) => item.side === "short")) {
+    const currentIds = await client.query<{ token_id: string }>(
+      `select token_id::text from public.fx_current_positions where lower(pool_address) = $1 order by token_id`,
+      [pool.poolAddress],
+    );
+    const ids = currentIds.rows.map((row) => row.token_id);
+    for (let start = 0; start < ids.length; start += chunkSize) {
+      const positions = await fetchOfficialPositions(pool, ids.slice(start, start + chunkSize));
+      if (positions.length === 0) continue;
 
       for (const position of positions) {
         await client.query(
@@ -643,8 +649,6 @@ async function syncOfficialFxOrders(client: Client) {
           orderCount += 1;
         }
       }
-
-      if (positions.length < pageSize) break;
     }
   }
 
@@ -754,6 +758,15 @@ async function updateUiPnlFromOfficialOrders(client: Client) {
       add column if not exists ui_last_order_block bigint;
   `);
 
+  await client.query(`
+    update public.fx_current_positions
+    set ui_entry_price_usd = null,
+        ui_unrealized_pnl_usd = null,
+        ui_order_count = 0,
+        ui_last_order_block = null
+    where side <> 'short';
+  `);
+
   const currentRows = await client.query<Record<string, unknown>>(`
     select lower(pool_address) as pool_address, token_id, oracle_price, raw_collateral, raw_debt, collateral_value_usd, debt_value_usd
     from public.fx_current_positions
@@ -767,7 +780,7 @@ async function updateUiPnlFromOfficialOrders(client: Client) {
     const poolAddress = String(current.pool_address).toLowerCase();
     const tokenId = String(current.token_id);
     const pool = OFFICIAL_POOLS.find((item) => item.poolAddress === poolAddress);
-    if (!pool) continue;
+    if (!pool || pool.side !== "short") continue;
 
     const officialPosition = await client.query<Record<string, unknown>>(
       `select * from public.fx_official_positions where lower(pool_address) = $1 and position_id = $2::numeric limit 1`,
