@@ -26,6 +26,7 @@
     "indexer:verify": "scripts/verify-envio-fx.sh",
     "contracts:verify": "node scripts/verify-fx-contracts.js",
     "indexer:reset": "docker compose --env-file .env -f docker-compose.yml -f docker-compose.indexer.yml run --rm --service-ports envio-indexer pnpm exec envio start -r",
-    "fx:sync-current-positions": "python3 scripts/sync-fx-current-positions.py"
+    "fx:sync-current-positions": "python3 scripts/sync-fx-current-positions.py",
+    "fx:maintain-known-wallets": "curl -fsS -X POST http://127.0.0.1:3000/api/jobs/maintain-known-wallets"
   }
 }

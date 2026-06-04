@@ -1,4 +1,11 @@
 import { Client } from "pg";
+import {
+  emptyWalletMaintenanceSummary,
+  getWalletMaintenanceSummary,
+  tableExists,
+  type WalletMaintenanceSummary,
+  upsertKnownWallet
+} from "./fx-wallet-maintenance";
 
 export type PoolSummary = {
   poolName: string;
@@ -64,9 +71,16 @@ export type DashboardData = {
     collateralValueUsd: number;
     debtValueUsd: number;
     equityUsd: number;
+    trackedOpenInterestUsd: number;
+    longNotionalUsd: number;
+    shortBorrowedExposureUsd: number;
+    longDebtUsd: number;
+    riskQueuePositions80: number;
+    riskQueueNotional80Usd: number;
   };
   pools: PoolSummary[];
   traders: TraderSummary[];
+  walletMaintenance: WalletMaintenanceSummary;
 };
 
 const emptyDashboard: DashboardData = {
@@ -80,10 +94,17 @@ const emptyDashboard: DashboardData = {
     shortPositions: 0,
     collateralValueUsd: 0,
     debtValueUsd: 0,
-    equityUsd: 0
+    equityUsd: 0,
+    trackedOpenInterestUsd: 0,
+    longNotionalUsd: 0,
+    shortBorrowedExposureUsd: 0,
+    longDebtUsd: 0,
+    riskQueuePositions80: 0,
+    riskQueueNotional80Usd: 0
   },
   pools: [],
-  traders: []
+  traders: [],
+  walletMaintenance: emptyWalletMaintenanceSummary
 };
 
 function getDatabaseUrl() {
@@ -93,7 +114,7 @@ function getDatabaseUrl() {
 async function withClient<T>(fn: (client: Client) => Promise<T>): Promise<T> {
   const databaseUrl = getDatabaseUrl();
   if (!databaseUrl) {
-    return fn(undefined as unknown as Client);
+    throw new Error("DATABASE_URL is required for database access");
   }
 
   const client = new Client({ connectionString: databaseUrl, connectionTimeoutMillis: 5_000 });
@@ -106,17 +127,11 @@ async function withClient<T>(fn: (client: Client) => Promise<T>): Promise<T> {
 }
 
 async function hasCurrentPositionsTable(client: Client) {
-  const exists = await client.query<{ exists: boolean }>(
-    "select to_regclass('public.fx_current_positions') is not null as exists"
-  );
-  return Boolean(exists.rows[0]?.exists);
+  return tableExists(client, "public.fx_current_positions");
 }
 
 async function latestSnapshotTime(client: Client) {
-  const exists = await client.query<{ exists: boolean }>(
-    "select to_regclass('public.fx_current_position_syncs') is not null as exists"
-  );
-  if (!exists.rows[0]?.exists) return null;
+  if (!(await tableExists(client, "public.fx_current_position_syncs"))) return null;
   const result = await client.query<{ generated_at: Date }>(
     "select generated_at from public.fx_current_position_syncs order by generated_at desc limit 1"
   );
@@ -192,8 +207,9 @@ export async function getDashboardData(): Promise<DashboardData> {
         return emptyDashboard;
       }
 
-      const [generatedAt, totalsResult, poolsResult, tradersResult] = await Promise.all([
+      const [generatedAt, walletMaintenance, totalsResult, poolsResult, tradersResult] = await Promise.all([
         latestSnapshotTime(client),
+        getWalletMaintenanceSummary(client),
         client.query<{
           open_positions: string;
           unique_traders: string;
@@ -203,6 +219,12 @@ export async function getDashboardData(): Promise<DashboardData> {
           collateral_value_usd: number;
           debt_value_usd: number;
           equity_usd: number;
+          tracked_open_interest_usd: number;
+          long_notional_usd: number;
+          short_borrowed_exposure_usd: number;
+          long_debt_usd: number;
+          risk_queue_positions_80: string;
+          risk_queue_notional_80_usd: number;
         }>(`
           select
             count(*)::text as open_positions,
@@ -212,7 +234,22 @@ export async function getDashboardData(): Promise<DashboardData> {
             count(*) filter (where side = 'short')::text as short_positions,
             coalesce(sum(collateral_value_usd), 0)::float8 as collateral_value_usd,
             coalesce(sum(debt_value_usd), 0)::float8 as debt_value_usd,
-            coalesce(sum(equity_usd), 0)::float8 as equity_usd
+            coalesce(sum(equity_usd), 0)::float8 as equity_usd,
+            (
+              coalesce(sum(collateral_value_usd) filter (where side = 'long'), 0) +
+              coalesce(sum(debt_value_usd) filter (where side = 'short'), 0)
+            )::float8 as tracked_open_interest_usd,
+            coalesce(sum(collateral_value_usd) filter (where side = 'long'), 0)::float8 as long_notional_usd,
+            coalesce(sum(debt_value_usd) filter (where side = 'short'), 0)::float8 as short_borrowed_exposure_usd,
+            coalesce(sum(debt_value_usd) filter (where side = 'long'), 0)::float8 as long_debt_usd,
+            count(*) filter (where debt_ratio >= 0.8)::text as risk_queue_positions_80,
+            coalesce(sum(
+              case
+                when debt_ratio >= 0.8 and side = 'long' then collateral_value_usd
+                when debt_ratio >= 0.8 and side = 'short' then debt_value_usd
+                else 0
+              end
+            ), 0)::float8 as risk_queue_notional_80_usd
           from public.fx_current_positions
         `),
         client.query<{
@@ -264,7 +301,13 @@ export async function getDashboardData(): Promise<DashboardData> {
           shortPositions: Number(totals?.short_positions ?? 0),
           collateralValueUsd: toNumber(totals?.collateral_value_usd),
           debtValueUsd: toNumber(totals?.debt_value_usd),
-          equityUsd: toNumber(totals?.equity_usd)
+          equityUsd: toNumber(totals?.equity_usd),
+          trackedOpenInterestUsd: toNumber(totals?.tracked_open_interest_usd),
+          longNotionalUsd: toNumber(totals?.long_notional_usd),
+          shortBorrowedExposureUsd: toNumber(totals?.short_borrowed_exposure_usd),
+          longDebtUsd: toNumber(totals?.long_debt_usd),
+          riskQueuePositions80: Number(totals?.risk_queue_positions_80 ?? 0),
+          riskQueueNotional80Usd: toNumber(totals?.risk_queue_notional_80_usd)
         },
         pools: poolsResult.rows.map((row) => ({
           poolName: row.pool_name,
@@ -279,7 +322,8 @@ export async function getDashboardData(): Promise<DashboardData> {
           equityUsd: toNumber(row.equity_usd),
           avgDebtRatio: toNumber(row.avg_debt_ratio)
         })),
-        traders: tradersResult.rows.map(mapTrader)
+        traders: tradersResult.rows.map(mapTrader),
+        walletMaintenance
       };
     });
   } catch (error) {
@@ -337,6 +381,8 @@ export async function getTraderProfile(address: string): Promise<TraderProfile |
 
   try {
     return await withClient(async (client) => {
+      await upsertKnownWallet(client, normalized, "profile_page_load");
+
       if (!(await hasCurrentPositionsTable(client))) {
         return null;
       }

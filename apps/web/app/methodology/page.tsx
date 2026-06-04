@@ -146,6 +146,37 @@ export default function MethodologyPage() {
 
       <div className="section-header">
         <div>
+          <p className="eyebrow">RPC budget</p>
+          <h2>Current positions vs historical PnL</h2>
+        </div>
+      </div>
+      <div className="card-grid compact">
+        <article className="card">
+          <h2>Page-load path</h2>
+          <p className="muted">
+            Trader pages upsert the requested wallet into <code>fx_known_wallets</code>. Current-position snapshots can be
+            refreshed by the bounded pool scanner without reconstructing full wallet history on demand.
+          </p>
+        </article>
+        <article className="card">
+          <h2>Maintenance path</h2>
+          <p className="muted">
+            The <code>maintain-known-wallets</code> job seeds the wallet set from current owners and indexed position
+            transfers. Historical realized PnL jobs should consume this set incrementally with per-wallet cursors.
+          </p>
+        </article>
+        <article className="card">
+          <h2>Global parity</h2>
+          <p className="muted">
+            Homepage global trackers only reuse fxprotocolstats-style labels when the formula matches. Open interest is
+            xPOSITION long notional plus sPOSITION borrowed exposure; current equity remains an app-specific snapshot
+            metric.
+          </p>
+        </article>
+      </div>
+
+      <div className="section-header">
+        <div>
           <p className="eyebrow">Limitations</p>
           <h2>What is not included yet</h2>
         </div>
@@ -171,17 +202,6 @@ export default function MethodologyPage() {
         </ul>
       </div>
 
-      <div className="section-header">
-        <div>
-          <p className="eyebrow">Next step</p>
-          <h2>Path to true PnL</h2>
-        </div>
-      </div>
-      <p className="muted">
-        The next production step is a historical manager-event indexer. Once cashflows are indexed from chain, trader
-        pages can add realized PnL, unrealized PnL, total return, fees, and liquidation history without relying on stale
-        external leaderboard snapshots.
-      </p>
     </section>
   );
 }

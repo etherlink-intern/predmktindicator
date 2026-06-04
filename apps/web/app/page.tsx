@@ -6,11 +6,46 @@ export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
   const dashboard = await getDashboardData();
-  const cards = [
-    ["Open positions", numberFormatter.format(dashboard.totals.openPositions)],
-    ["Unique traders", numberFormatter.format(dashboard.totals.uniqueTraders)],
-    ["Net current equity", formatUsd(dashboard.totals.equityUsd)],
-    ["Snapshot freshness", formatDate(dashboard.generatedAt)]
+  const snapshotCards = [
+    ["Open positions", numberFormatter.format(dashboard.totals.openPositions), "Owner-confirmed active position NFTs"],
+    ["Active wallets", numberFormatter.format(dashboard.totals.uniqueTraders), "Unique current owners in the latest snapshot"],
+    ["Current equity", formatUsd(dashboard.totals.equityUsd), "App-specific mark-to-oracle collateral minus debt"],
+    ["Snapshot freshness", formatDate(dashboard.generatedAt), "Latest current-position sync time"]
+  ];
+
+  const globalTrackers = [
+    [
+      "Tracked open interest",
+      formatUsd(dashboard.totals.trackedOpenInterestUsd),
+      "Same semantic family as fxprotocolstats Open Interest: xPOSITION long notional plus sPOSITION borrowed exposure, computed from our current snapshot."
+    ],
+    [
+      "xPOSITION long notional",
+      formatUsd(dashboard.totals.longNotionalUsd),
+      "Long-pool collateral notional marked with the pool oracle."
+    ],
+    [
+      "sPOSITION borrowed exposure",
+      formatUsd(dashboard.totals.shortBorrowedExposureUsd),
+      "Short-pool borrowed wstETH/WBTC exposure marked from current pool state."
+    ],
+    [
+      "Long fxUSD debt",
+      formatUsd(dashboard.totals.longDebtUsd),
+      "fxUSD debt attached to current xPOSITIONs; not the protocol fxUSD totalSupply()."
+    ],
+    [
+      "80%+ risk queue",
+      `${numberFormatter.format(dashboard.totals.riskQueuePositions80)} positions`,
+      `${formatUsd(dashboard.totals.riskQueueNotional80Usd)} tracked notional at or above 80% debt ratio.`
+    ],
+    [
+      "Known wallets",
+      numberFormatter.format(dashboard.walletMaintenance.knownWallets),
+      dashboard.walletMaintenance.lastMaintainedAt
+        ? `Wallet-maintenance set updated ${formatDate(dashboard.walletMaintenance.lastMaintainedAt)}.`
+        : "Maintenance table not seeded yet."
+    ]
   ];
 
   return (
@@ -25,10 +60,33 @@ export default async function HomePage() {
       </p>
 
       <div className="card-grid">
-        {cards.map(([label, value]) => (
+        {snapshotCards.map(([label, value, detail]) => (
           <article className="card" key={label}>
             <p className="muted">{label}</p>
             <h2>{value}</h2>
+            <p className="muted small">{detail}</p>
+          </article>
+        ))}
+      </div>
+
+      <div className="section-header">
+        <div>
+          <p className="eyebrow">Global trackers</p>
+          <h2>Position book and wallet-maintenance state</h2>
+        </div>
+      </div>
+      <p className="muted">
+        To avoid discrepancies with <a className="text-link" href="https://fxprotocolstats.com">fxprotocolstats.com</a>,
+        overlapping labels use the same public semantics where we can support them from our data. The open-interest
+        card is defined as xPOSITION long notional plus sPOSITION borrowed exposure; app-specific values such as current
+        equity are labeled separately and are not presented as official protocol TVL, fxUSD supply, fee revenue, or APY.
+      </p>
+      <div className="card-grid compact">
+        {globalTrackers.map(([label, value, detail]) => (
+          <article className="card" key={label}>
+            <p className="muted">{label}</p>
+            <h2>{value}</h2>
+            <p className="muted small">{detail}</p>
           </article>
         ))}
       </div>

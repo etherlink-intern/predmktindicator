@@ -303,6 +303,32 @@ insert into public.fx_current_position_syncs(source) values ('live_rpc_snapshot'
 create index if not exists fx_current_positions_owner_idx on public.fx_current_positions(owner);
 create index if not exists fx_current_positions_pool_idx on public.fx_current_positions(pool_name, side, collateral);
 
+create table if not exists public.fx_known_wallets (
+  address text primary key,
+  first_seen_at timestamptz not null default now(),
+  last_seen_at timestamptz not null default now(),
+  source text not null default 'unknown',
+  last_position_sync_at timestamptz,
+  last_history_sync_at timestamptz,
+  history_cursor_block bigint,
+  history_status text not null default 'pending',
+  realized_pnl_status text not null default 'not_indexed',
+  updated_at timestamptz not null default now(),
+  check (address ~ '^0x[0-9a-f]{40}$')
+);
+
+insert into public.fx_known_wallets(address, source, last_position_sync_at)
+select distinct lower(owner), 'current_positions_snapshot', now()
+from public.fx_current_positions
+where owner is not null
+  and lower(owner) <> '0x0000000000000000000000000000000000000000'
+  and lower(owner) ~ '^0x[0-9a-f]{40}$'
+on conflict (address) do update set
+  last_seen_at = now(),
+  source = excluded.source,
+  last_position_sync_at = now(),
+  updated_at = now();
+
 select count(*) as open_positions, count(distinct owner) as unique_traders, count(distinct pool_address) as pools
 from public.fx_current_positions;
 '''

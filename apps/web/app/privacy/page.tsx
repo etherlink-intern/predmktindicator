@@ -104,16 +104,6 @@ export default function PrivacyPage() {
         </p>
       </div>
 
-      <div className="section-header">
-        <div>
-          <p className="eyebrow">Contact</p>
-          <h2>Questions</h2>
-        </div>
-      </div>
-      <p className="muted">
-        If the app later adds accounts, wallet connections, analytics, forms, or any non-public data source, this
-        policy should be updated before those features are released.
-      </p>
     </section>
   );
 }

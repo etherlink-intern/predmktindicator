@@ -23,6 +23,12 @@ a {
   text-decoration: none;
 }
 
+.text-link {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .shell {
   margin: 0 auto;
   max-width: 1180px;
