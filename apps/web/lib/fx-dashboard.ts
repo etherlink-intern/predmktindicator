@@ -42,6 +42,7 @@ export type TraderSummary = {
   avgDebtRatio: number;
   maxDebtRatio: number;
   unrealizedPnlUsd: number;
+  totalPnlUsd: number;
   feesUsd: number;
   hasPositionHistory: boolean;
 };
@@ -197,6 +198,7 @@ function mapTrader(row: Record<string, unknown>): TraderSummary {
     avgDebtRatio: toNumber(row.avgDebtRatio),
     maxDebtRatio: toNumber(row.maxDebtRatio),
     unrealizedPnlUsd: toNumber(row.unrealizedPnlUsd),
+    totalPnlUsd: toNumber(row.totalPnlUsd),
     feesUsd: toNumber(row.feesUsd),
     hasPositionHistory: Boolean(row.hasPositionHistory)
   };

@@ -10,6 +10,15 @@ import { LocalTime } from "../../local-time";
 
 const nf = new Intl.NumberFormat("en-US");
 
+function formatCompactUsd(value: number) {
+  const sign = value < 0 ? "-" : "";
+  const absolute = Math.abs(value);
+  if (absolute >= 1_000_000_000) return `${sign}$${(absolute / 1_000_000_000).toFixed(2).replace(/\.00$/, "")}B`;
+  if (absolute >= 1_000_000) return `${sign}$${(absolute / 1_000_000).toFixed(2).replace(/\.00$/, "")}M`;
+  if (absolute >= 1_000) return `${sign}$${Math.round(absolute / 1_000).toLocaleString()}K`;
+  return `${sign}$${Math.round(absolute).toLocaleString()}`;
+}
+
 export const dynamic = "force-dynamic";
 
 type TraderPageProps = {
@@ -62,6 +71,8 @@ export default async function TraderPage({ params }: TraderPageProps) {
         <div><span className="metric-value" style={{ fontSize: 20, color: s.equityUsd >= 0 ? "var(--positive)" : "var(--negative)" }}>{formatUsd(s.equityUsd)}</span><div className="metric-label">Equity</div></div>
         <div><span className="metric-value" style={{ fontSize: 20 }}>{formatUsd(s.debtValueUsd)}</span><div className="metric-label">Debt</div></div>
         <div><span className="metric-value" style={{ fontSize: 20 }}>{formatUsd(s.feesUsd)}</span><div className="metric-label">Fees paid</div></div>
+        <div><span className="metric-value" style={{ fontSize: 20, color: s.unrealizedPnlUsd >= 0 ? "var(--positive)" : "var(--negative)" }}>{formatCompactUsd(s.unrealizedPnlUsd)}</span><div className="metric-label">Unrealized PnL</div></div>
+        <div><span className="metric-value" style={{ fontSize: 20, color: s.totalPnlUsd >= 0 ? "var(--positive)" : "var(--negative)" }}>{formatCompactUsd(s.totalPnlUsd)}</span><div className="metric-label">Total PnL</div></div>
         <div><span className="metric-value" style={{ fontSize: 20 }}>{nf.format(s.positions)}</span><div className="metric-label">Positions</div></div>
         <div><span className="metric-value" style={{ fontSize: 20 }}>{formatPercent(s.maxDebtRatio)}</span><div className="metric-label">Max debt ratio</div></div>
       </div>
