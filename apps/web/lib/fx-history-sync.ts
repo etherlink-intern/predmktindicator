@@ -420,6 +420,7 @@ export async function computeFxPositionPnl(client: Client) {
       from public.fx_position_cashflows c
       left join entry_prices e on lower(e.pool_address) = lower(c.pool_address) and e.position_id = c.position_id
       where c.position_id is not null
+        and c.source = 'manager'
         and c.collateral_in_raw < 1000000000000000000000000
         and c.collateral_out_raw < 1000000000000000000000000
         and c.debt_increase_raw < 100000000000000000000000000000000
