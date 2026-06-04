@@ -69,6 +69,7 @@ export type HistoricalPosition = {
   side: string;
   tokenId: string;
   feesUsd: number;
+  realizedPnlUsd: number;
   cashflowEventCount: number;
   firstBlock: number;
   lastBlock: number;
@@ -547,6 +548,12 @@ export async function getTraderProfile(address: string): Promise<TraderProfile |
                end,
              0)::float8 as "feesUsd",
              h.cashflow_event_count as "cashflowEventCount",
+             coalesce(
+               case when coalesce(p.side, 'long') = 'short'
+                 then h.realized_pnl_raw / 1000000000000000000
+                 else h.realized_pnl_raw * coalesce(p.oracle_price, 0) / 1000000000000000000
+               end,
+             0)::float8 as "realizedPnlUsd",
              h.first_cashflow_block as "firstBlock",
              h.last_cashflow_block as "lastBlock",
              p.token_id is not null as "isOpen"
@@ -572,6 +579,7 @@ export async function getTraderProfile(address: string): Promise<TraderProfile |
           side: String(row.side),
           tokenId: String(row.tokenId),
           feesUsd: toNumber(row.feesUsd),
+          realizedPnlUsd: toNumber(row.realizedPnlUsd),
           cashflowEventCount: Number(row.cashflowEventCount),
           firstBlock: Number(row.firstBlock),
           lastBlock: Number(row.lastBlock),

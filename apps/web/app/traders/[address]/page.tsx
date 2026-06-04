@@ -19,6 +19,17 @@ function formatCompactUsd(value: number) {
   return `${sign}$${Math.round(absolute).toLocaleString()}`;
 }
 
+function formatOraclePrice(price: number) {
+  if (price === 0) return "—";
+  if (price >= 1) return nf.format(price);
+  return price.toFixed(6);
+}
+
+function formatPnl(value: number) {
+  if (value === 0) return "—";
+  return <span style={{ color: value > 0 ? "var(--positive)" : "var(--negative)" }}>{formatCompactUsd(value)}</span>;
+}
+
 export const dynamic = "force-dynamic";
 
 type TraderPageProps = {
@@ -141,7 +152,7 @@ export default async function TraderPage({ params }: TraderPageProps) {
                 </td>
                 <td>{displayPool(position.poolName)}</td>
                 <td><span className={`pill ${position.side}`}>{position.side}</span></td>
-                <td className="numeric">{nf.format(position.oraclePrice)}</td>
+                <td className="numeric">{formatOraclePrice(position.oraclePrice)}</td>
                 <td className="numeric">{formatUsd(position.collateralValueUsd)}</td>
                 <td className="numeric">{formatUsd(position.debtValueUsd)}</td>
                 <td className="numeric">{formatUsd(position.equityUsd)}</td>
@@ -167,6 +178,7 @@ export default async function TraderPage({ params }: TraderPageProps) {
                   <th>Market</th>
                   <th>Side</th>
                   <th className="numeric">Fees paid</th>
+                  <th className="numeric">Realized PnL</th>
                   <th className="numeric">Events</th>
                   <th>Status</th>
                 </tr>
@@ -180,6 +192,7 @@ export default async function TraderPage({ params }: TraderPageProps) {
                     <td>{h.poolName !== h.poolAddress ? h.poolName : h.poolAddress.slice(0, 10) + "…"}</td>
                     <td><span className={`pill ${h.side}`}>{h.side === "unknown" ? "—" : h.side}</span></td>
                     <td className="numeric">{formatUsd(h.feesUsd)}</td>
+                    <td className="numeric">{formatPnl(h.realizedPnlUsd)}</td>
                     <td className="numeric">{nf.format(h.cashflowEventCount)}</td>
                     <td>
                       <span className={`pill ${h.isOpen ? "long" : "short"}`} style={{ fontSize: 10 }}>
