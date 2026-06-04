@@ -1,4 +1,5 @@
-import { formatAddress, formatDate, formatPercent, formatUsd, getDashboardData } from "../../lib/fx-dashboard";
+import { formatDate, formatUsd, getDashboardData } from "../../lib/fx-dashboard";
+import { LeaderboardTable } from "./leaderboard-table";
 
 const numberFormatter = new Intl.NumberFormat("en-US");
 
@@ -12,8 +13,8 @@ export default async function LeaderboardPage() {
       <p className="eyebrow">Leaderboard</p>
       <h1>Trader leaderboard</h1>
       <p className="muted">
-        Top wallets by owner-confirmed open f(x) position count. Equity, debt, and debt ratio are current
-        blockchain-derived marks from pool/oracle calls, not the external f(x) web leaderboard. Snapshot: {formatDate(dashboard.generatedAt)}.
+        Wallets ranked by current notional value by default. Use the filters and sortable columns to explore active
+        f(x) wallets by exposure, position count, equity, debt, and risk. Snapshot: {formatDate(dashboard.generatedAt)}.
       </p>
 
       <div className="card-grid compact">
@@ -22,8 +23,12 @@ export default async function LeaderboardPage() {
           <h2>{numberFormatter.format(dashboard.totals.openPositions)}</h2>
         </article>
         <article className="card">
-          <p className="muted">Unique traders</p>
+          <p className="muted">Tracked wallets</p>
           <h2>{numberFormatter.format(dashboard.totals.uniqueTraders)}</h2>
+        </article>
+        <article className="card">
+          <p className="muted">Tracked notional</p>
+          <h2>{formatUsd(dashboard.totals.trackedOpenInterestUsd)}</h2>
         </article>
         <article className="card">
           <p className="muted">Current net equity</p>
@@ -31,40 +36,7 @@ export default async function LeaderboardPage() {
         </article>
       </div>
 
-      <div className="table-card">
-        <table>
-          <thead>
-            <tr>
-              <th>Rank</th>
-              <th>Wallet</th>
-              <th>Open positions</th>
-              <th>Pools</th>
-              <th>Current equity</th>
-              <th>Debt value</th>
-              <th>Max debt ratio</th>
-              <th>Breakdown</th>
-            </tr>
-          </thead>
-          <tbody>
-            {dashboard.traders.map((trader, index) => (
-              <tr key={trader.owner}>
-                <td>#{index + 1}</td>
-                <td>
-                  <a className="mono" href={`/traders/${trader.owner}`} title={trader.owner}>{formatAddress(trader.owner)}</a>
-                </td>
-                <td>{numberFormatter.format(trader.positions)}</td>
-                <td>{numberFormatter.format(trader.pools)}</td>
-                <td>{formatUsd(trader.equityUsd)}</td>
-                <td>{formatUsd(trader.debtValueUsd)}</td>
-                <td>{formatPercent(trader.maxDebtRatio)}</td>
-                <td className="muted small">
-                  WL {trader.wstethLong} · BL {trader.wbtcLong} · WS {trader.wstethShort} · BS {trader.wbtcShort}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <LeaderboardTable traders={dashboard.traders} />
     </section>
   );
 }

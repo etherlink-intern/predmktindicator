@@ -1,5 +1,12 @@
 import { notFound } from "next/navigation";
-import { formatAddress, formatPercent, formatUsd, getPositionProfile } from "../../../lib/fx-dashboard";
+import {
+  displayInstrument,
+  displayPool,
+  formatAddress,
+  formatPercent,
+  formatUsd,
+  getPositionProfile
+} from "../../../lib/fx-dashboard";
 
 const numberFormatter = new Intl.NumberFormat("en-US");
 
@@ -20,10 +27,10 @@ export default async function PositionPage({ params }: PositionPageProps) {
   return (
     <section>
       <p className="eyebrow">Position</p>
-      <h1>{position.poolName} #{position.tokenId}</h1>
+      <h1>{displayPool(position.poolName)} #{position.tokenId}</h1>
       <p className="muted">
-        Current position metrics are read from live f(x) pool/oracle state. They are current equity/risk marks, not
-        realized historical PnL.
+        Current position metrics are calculated from public f(x) contract state and oracle prices. They are snapshot
+        estimates, not realized historical profit/loss or financial advice.
       </p>
 
       <div className="card-grid compact">
@@ -49,12 +56,13 @@ export default async function PositionPage({ params }: PositionPageProps) {
         <table>
           <tbody>
             <tr><th>Owner</th><td><a className="mono" href={`/traders/${position.owner}`}>{formatAddress(position.owner)}</a></td></tr>
-            <tr><th>Pool</th><td className="mono wrap">{position.poolAddress}</td></tr>
+            <tr><th>Market</th><td>{displayPool(position.poolName)}</td></tr>
+            <tr><th>Pool address</th><td className="mono wrap">{position.poolAddress}</td></tr>
             <tr><th>Side</th><td><span className={`pill ${position.side}`}>{position.side}</span></td></tr>
-            <tr><th>Collateral</th><td>{position.collateral}</td></tr>
+            <tr><th>Instrument</th><td>{displayInstrument(position.collateral)}</td></tr>
             <tr><th>Oracle price</th><td>{numberFormatter.format(position.oraclePrice)}</td></tr>
-            <tr><th>Raw collateral</th><td className="mono wrap">{position.rawCollateral}</td></tr>
-            <tr><th>Raw debt</th><td className="mono wrap">{position.rawDebt}</td></tr>
+            <tr><th>On-chain collateral amount</th><td className="mono wrap">{position.rawCollateral}</td></tr>
+            <tr><th>On-chain debt amount</th><td className="mono wrap">{position.rawDebt}</td></tr>
           </tbody>
         </table>
       </div>

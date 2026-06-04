@@ -28,15 +28,21 @@ async function checkDatabase(): Promise<{ status: DatabaseHealth; error?: string
 
 export async function GET() {
   const database = await checkDatabase();
-  const hasSubgraph = Boolean(process.env.GOLDSKY_SUBGRAPH_URL || process.env.THE_GRAPH_SUBGRAPH_URL);
+  const provider = process.env.GOLDSKY_SUBGRAPH_URL
+    ? "goldsky"
+    : process.env.THE_GRAPH_SUBGRAPH_URL
+      ? "the_graph"
+      : process.env.ENVIO_HASURA_QUERY_URL || process.env.HASURA_GRAPHQL_QUERY_URL
+        ? "envio_hasura"
+        : null;
 
   return NextResponse.json({
     ok: database.status === "ok",
     app: process.env.NEXT_PUBLIC_APP_NAME ?? "fx-trader-profiles",
     database,
     subgraph: {
-      configured: hasSubgraph,
-      provider: process.env.GOLDSKY_SUBGRAPH_URL ? "goldsky" : process.env.THE_GRAPH_SUBGRAPH_URL ? "the_graph" : null
+      configured: Boolean(provider),
+      provider
     },
     timestamp: new Date().toISOString()
   });

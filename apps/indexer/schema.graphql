@@ -18,18 +18,135 @@ type FxEvent {
   blockNumber: Int!
   blockTimestamp: Int!
   transactionHash: String!
-  logIndex: Int!
+  transactionFrom: String
+  transactionTo: String
+  logIndex: BigInt!
 }
 
 type FxPositionTransfer {
   # chain:block:logIndex
   id: ID!
   contract: FxContract!
+  pool: String!
   tokenId: BigInt!
   from: String!
   to: String!
   blockNumber: Int!
   blockTimestamp: Int!
   transactionHash: String!
-  logIndex: Int!
+  logIndex: BigInt!
+}
+
+type FxPositionCashflow {
+  # chain:block:logIndex
+  id: ID!
+  contract: FxContract!
+  source: String!
+  eventName: String!
+  pool: String!
+  positionId: BigInt
+  user: String
+  recipient: String
+  deltaColls: BigInt
+  deltaDebts: BigInt
+  colls: BigInt
+  debts: BigInt
+  borrows: BigInt
+  protocolFees: BigInt
+  # Directional raw cash-flow rollup for app enrichment.
+  collateralInRaw: BigInt!
+  collateralOutRaw: BigInt!
+  debtIncreaseRaw: BigInt!
+  debtDecreaseRaw: BigInt!
+  feeRaw: BigInt!
+  blockNumber: Int!
+  blockTimestamp: Int!
+  transactionHash: String!
+  transactionFrom: String
+  logIndex: BigInt!
+}
+
+type FxRedeemEvent {
+  id: ID!
+  contract: FxContract!
+  eventName: String!
+  pool: String!
+  colls: BigInt!
+  debts: BigInt!
+  protocolFees: BigInt
+  blockNumber: Int!
+  blockTimestamp: Int!
+  transactionHash: String!
+  logIndex: BigInt!
+}
+
+type FxLiquidateEvent {
+  id: ID!
+  contract: FxContract!
+  pool: String!
+  colls: BigInt!
+  debts: BigInt!
+  blockNumber: Int!
+  blockTimestamp: Int!
+  transactionHash: String!
+  logIndex: BigInt!
+}
+
+type FxRebalanceEvent {
+  id: ID!
+  contract: FxContract!
+  eventName: String!
+  pool: String!
+  tick: Int
+  colls: BigInt!
+  debts: BigInt!
+  blockNumber: Int!
+  blockTimestamp: Int!
+  transactionHash: String!
+  logIndex: BigInt!
+}
+
+type FxPoolIndexEvent {
+  id: ID!
+  contract: FxContract!
+  eventName: String!
+  index: BigInt
+  minDebtRatio: BigInt
+  maxDebtRatio: BigInt
+  debtRatio: BigInt
+  bonusRatio: BigInt
+  blockNumber: Int!
+  blockTimestamp: Int!
+  transactionHash: String!
+  logIndex: BigInt!
+}
+
+type FxPositionSnapshot {
+  id: ID!
+  contract: FxContract!
+  pool: String!
+  positionId: BigInt!
+  tick: Int!
+  collShares: BigInt!
+  debtShares: BigInt!
+  price: BigInt!
+  blockNumber: Int!
+  blockTimestamp: Int!
+  transactionHash: String!
+  logIndex: BigInt!
+}
+
+type FxTickMovement {
+  id: ID!
+  contract: FxContract!
+  pool: String!
+  oldTick: Int!
+  newTick: Int!
+  collShares: BigInt!
+  debtShares: BigInt!
+  price: BigInt!
+  blockNumber: Int!
+  blockTimestamp: Int!
+  transactionHash: String!
+  logIndex: BigInt!
 }

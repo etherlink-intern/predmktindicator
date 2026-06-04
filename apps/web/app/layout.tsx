@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "fx-trader-profiles",
-  description: "Trader-profile dashboard for f(x) Protocol wallets"
+  title: "f(x) Trader Profiles",
+  description: "Public dashboard for active f(x) Protocol positions and wallet-level risk metrics."
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

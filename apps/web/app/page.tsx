@@ -1,4 +1,4 @@
-import { formatDate, formatPercent, formatUsd, getDashboardData } from "../lib/fx-dashboard";
+import { displayInstrument, displayPool, formatDate, formatPercent, formatUsd, getDashboardData } from "../lib/fx-dashboard";
 
 const numberFormatter = new Intl.NumberFormat("en-US");
 
@@ -7,44 +7,44 @@ export const dynamic = "force-dynamic";
 export default async function HomePage() {
   const dashboard = await getDashboardData();
   const snapshotCards = [
-    ["Open positions", numberFormatter.format(dashboard.totals.openPositions), "Owner-confirmed active position NFTs"],
-    ["Active wallets", numberFormatter.format(dashboard.totals.uniqueTraders), "Unique current owners in the latest snapshot"],
-    ["Current equity", formatUsd(dashboard.totals.equityUsd), "App-specific mark-to-oracle collateral minus debt"],
-    ["Snapshot freshness", formatDate(dashboard.generatedAt), "Latest current-position sync time"]
+    ["Open positions", numberFormatter.format(dashboard.totals.openPositions), "Active position NFTs confirmed on-chain"],
+    ["Active wallets", numberFormatter.format(dashboard.totals.uniqueTraders), "Wallets that currently own tracked positions"],
+    ["Current equity", formatUsd(dashboard.totals.equityUsd), "Estimated current equity across tracked positions"],
+    ["Last updated", formatDate(dashboard.generatedAt), "Most recent dashboard refresh"]
   ];
 
   const globalTrackers = [
     [
       "Tracked open interest",
       formatUsd(dashboard.totals.trackedOpenInterestUsd),
-      "xPOSITION long notional plus sPOSITION borrowed exposure, computed from our current snapshot."
+      "Estimated exposure across tracked active positions."
     ],
     [
-      "xPOSITION long notional",
+      "Long-side exposure",
       formatUsd(dashboard.totals.longNotionalUsd),
-      "Long-pool collateral notional marked with the pool oracle."
+      "Estimated current exposure for tracked long positions."
     ],
     [
-      "sPOSITION borrowed exposure",
+      "Short-side exposure",
       formatUsd(dashboard.totals.shortBorrowedExposureUsd),
-      "Short-pool borrowed wstETH/WBTC exposure marked from current pool state."
+      "Estimated current exposure for tracked short positions."
     ],
     [
-      "Long fxUSD debt",
+      "Tracked debt",
       formatUsd(dashboard.totals.longDebtUsd),
-      "fxUSD debt attached to current xPOSITIONs; not the protocol fxUSD totalSupply()."
+      "Debt attached to tracked active positions."
     ],
     [
-      "80%+ risk queue",
+      "Risk watchlist",
       `${numberFormatter.format(dashboard.totals.riskQueuePositions80)} positions`,
-      `${formatUsd(dashboard.totals.riskQueueNotional80Usd)} tracked notional at or above 80% debt ratio.`
+      `${formatUsd(dashboard.totals.riskQueueNotional80Usd)} in tracked positions at or above an 80% debt ratio.`
     ],
     [
-      "Known wallets",
+      "Tracked wallets",
       numberFormatter.format(dashboard.walletMaintenance.knownWallets),
       dashboard.walletMaintenance.lastMaintainedAt
-        ? `Wallet-maintenance set updated ${formatDate(dashboard.walletMaintenance.lastMaintainedAt)}.`
-        : "Maintenance table not seeded yet."
+        ? `Tracked wallet list refreshed ${formatDate(dashboard.walletMaintenance.lastMaintainedAt)}.`
+        : "Wallet tracking is initializing."
     ]
   ];
 
@@ -53,10 +53,8 @@ export default async function HomePage() {
       <p className="eyebrow">f(x) Protocol</p>
       <h1>Live f(x) trader profiles</h1>
       <p className="muted">
-        Current-position dashboard built from the verified f(x) position-pool contracts. The snapshot scans every
-        position ID with <code>getPosition</code>, confirms owners with <code>ownerOf</code>, and values positions from live
-        pool oracle prices. Realized historical PnL is intentionally not shown until manager events are indexed from
-        chain.
+        Explore current f(x) Protocol positions by wallet using public on-chain data. Values are snapshot estimates
+        from verified contracts and oracle prices; they are not realized profit/loss or financial advice.
       </p>
 
       <div className="card-grid">
@@ -71,8 +69,8 @@ export default async function HomePage() {
 
       <div className="section-header">
         <div>
-          <p className="eyebrow">Global trackers</p>
-          <h2>Position book and wallet-maintenance state</h2>
+          <p className="eyebrow">Market overview</p>
+          <h2>Position book snapshot</h2>
         </div>
       </div>
 
@@ -88,14 +86,14 @@ export default async function HomePage() {
 
       {!dashboard.hasSnapshot ? (
         <div className="card warning">
-          <h2>No current-position snapshot found</h2>
-          <p className="muted">Run the f(x) current-position sync job to populate the dashboard.</p>
+          <h2>Snapshot is being prepared</h2>
+          <p className="muted">Position data will appear after the next dashboard refresh.</p>
         </div>
       ) : (
         <>
           <div className="section-header">
             <div>
-              <p className="eyebrow">Pool matrix</p>
+              <p className="eyebrow">Pool overview</p>
               <h2>Open positions by pool</h2>
             </div>
             <a className="button" href="/leaderboard">View trader leaderboard</a>
@@ -105,9 +103,9 @@ export default async function HomePage() {
             <table>
               <thead>
                 <tr>
-                  <th>Pool</th>
+                  <th>Market</th>
                   <th>Side</th>
-                  <th>Collateral</th>
+                  <th>Instrument</th>
                   <th>Open positions</th>
                   <th>Owners</th>
                   <th>Current equity</th>
@@ -117,10 +115,10 @@ export default async function HomePage() {
               </thead>
               <tbody>
                 {dashboard.pools.map((pool) => (
-                  <tr key={pool.poolName}>
-                    <td>{pool.poolName}</td>
+                  <tr key={`${pool.side}-${displayInstrument(pool.collateral)}`}>
+                    <td>{displayPool(pool.poolName)}</td>
                     <td><span className={`pill ${pool.side}`}>{pool.side}</span></td>
-                    <td>{pool.collateral}</td>
+                    <td>{displayInstrument(pool.collateral)}</td>
                     <td>{numberFormatter.format(pool.positions)}</td>
                     <td>{numberFormatter.format(pool.uniqueOwners)}</td>
                     <td>{formatUsd(pool.equityUsd)}</td>

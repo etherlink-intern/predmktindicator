@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=./node_modules/envio/evm.schema.json
 name: fx-trader-profiles-local-indexer
-description: Local Envio HyperIndex f(x) Protocol starter indexer wired through the predmktindicator RPC router.
+description: Local Envio HyperIndex f(x) Protocol manager/router/pool event indexer wired through the predmktindicator RPC router.
 
 raw_events: false
 field_selection:
@@ -10,31 +10,72 @@ field_selection:
     - to
 
 contracts:
-  - name: FxLifecycle
+  - name: FxLongPoolManager
     events:
-      # Lifecycle events are kept in the ABI surface for deployment-window experiments.
-      - event: "Upgraded(address indexed implementation)"
-      - event: "AdminChanged(address previousAdmin, address newAdmin)"
-      - event: "OwnershipTransferred(address indexed previousOwner, address indexed newOwner)"
-      # f(x) position pools are ERC-721 style position tokens; Transfer tracks ownership.
+      - event: "RegisterPool(address indexed pool)"
+      - event: "Operate(address indexed pool, uint256 indexed position, int256 deltaColls, int256 deltaDebts, uint256 protocolFees)"
+      - event: "Redeem(address indexed pool, uint256 colls, uint256 debts, uint256 protocolFees)"
+      - event: "RedeemForSettle(address indexed pool, uint256 colls, uint256 debts)"
+      - event: "Harvest(address indexed caller, address indexed pool, uint256 amountRewards, uint256 amountFunding, uint256 performanceFee, uint256 harvestBounty)"
+      - event: "ReduceDebt(address indexed pool, uint256 amount)"
+
+  - name: FxShortPoolManager
+    events:
+      - event: "RegisterPool(address indexed pool)"
+      - event: "Operate(address indexed pool, uint256 indexed position, int256 deltaColls, int256 deltaDebts, uint256 protocolFees)"
+      - event: "Redeem(address indexed pool, uint256 colls, uint256 debts, uint256 protocolFees)"
+      - event: "RedeemForSettle(address indexed pool, uint256 colls, uint256 debts)"
+      - event: "Harvest(address indexed caller, address indexed pool, uint256 amountRewards, uint256 amountFunding, uint256 performanceFee, uint256 harvestBounty)"
+      - event: "ReduceDebt(address indexed pool, uint256 amount)"
+      - event: "RebalanceTick(address indexed pool, int16 indexed tick, uint256 colls, uint256 debts)"
+      - event: "Rebalance(address indexed pool, uint256 colls, uint256 debts)"
+      - event: "Liquidate(address indexed pool, uint256 colls, uint256 debts)"
+      - event: "RedeemByCreditNote(address indexed pool, uint256 colls, uint256 debts, uint256 protocolFees)"
+      - event: "KillPool(address indexed pool, uint256 rawColls, uint256 debts)"
+      - event: "SettleKillPool(address indexed pool, uint256 colls, uint256 debts)"
+
+  - name: FxRouter
+    events:
+      - event: "Operate(address indexed pool, address indexed user, uint256 positionId, int256 deltaColls, int256 deltaDebts)"
+      - event: "OpenOrAdd(address pool, uint256 position, address recipient, uint256 colls, uint256 debts, uint256 borrows)"
+      - event: "CloseOrRemove(address pool, uint256 position, address recipient, uint256 colls, uint256 debts, uint256 borrows)"
+
+  - name: FxPositionPool
+    events:
       - event: "Transfer(address indexed from, address indexed to, uint256 indexed tokenId)"
+      - event: "PositionSnapshot(uint256 position, int16 tick, uint256 collShares, uint256 debtShares, uint256 price)"
+      - event: "TickMovement(int16 oldTick, int16 newTick, uint256 collShares, uint256 debtShares, uint256 price)"
+      - event: "DebtIndexSnapshot(uint256 index)"
+      - event: "CollateralIndexSnapshot(uint256 index)"
+      - event: "UpdateDebtRatioRange(uint256 minDebtRatio, uint256 maxDebtRatio)"
+      - event: "UpdateRebalanceRatios(uint256 debtRatio, uint256 bonusRatio)"
+      - event: "UpdateLiquidateRatios(uint256 debtRatio, uint256 bonusRatio)"
 
 chains:
   - id: 1
-    # Bounded f(x) starter pass over compact windows with observed real
-    # position Transfer activity across all verified current position pools:
-    # WstETH/WBTC x Long/Short.
-    start_block: 23678000
-    end_block: 23694600
+    # Full f(x) v2/xPOSITION deployment history from the earliest active target.
+    # Individual contract start blocks are recorded in docs/contracts metadata; this chain-level
+    # lower bound keeps Envio from missing router/manager events that join with later pool activity.
+    start_block: 21529341
     rpc:
       - url: ${ENVIO_RPC_URL}
         for: sync
       - url: ${ENVIO_RPC_URL}
         for: fallback
     contracts:
-      - name: FxLifecycle
+      - name: FxLongPoolManager
         address:
-          - "0x6Ecfa38FeE8a5277B91eFdA204c235814F0122E8" # WstETHLongPool
-          - "0xAB709e26Fa6B0A30c119D8c55B887DeD24952473" # WBTCLongPool
-          - "0x25707b9e6690B52C60aE6744d711cf9C1dFC1876" # WstETHShortPool
-          - "0xA0cC8162c523998856D59065fAa254F87D20A5b0" # WBTCShortPool
+          - "0x250893CA4Ba5d05626C785e8da758026928FCD24" # LongPoolManager
+      - name: FxShortPoolManager
+        address:
+          - "0xaCDc0AB51178d0Ae8F70c1EAd7d3cF5421FDd66D" # ShortPoolManager
+      - name: FxRouter
+        address:
+          - "0x33636D49FbefBE798e15e7F356E8DBef543CC708" # RouterDiamond
+          - "0xB753366082466c4B5984312f0c4Bb97554be067E" # FxMintRouter
+      - name: FxPositionPool
+        address:
+          - "0x6Ecfa38FeE8a5277B91eFdA204c235814F0122E8" # ETH Long pool
+          - "0xAB709e26Fa6B0A30c119D8c55B887DeD24952473" # BTC Long pool
+          - "0x25707b9e6690B52C60aE6744d711cf9C1dFC1876" # ETH Short pool
+          - "0xA0cC8162c523998856D59065fAa254F87D20A5b0" # BTC Short pool

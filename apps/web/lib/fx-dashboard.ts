@@ -29,6 +29,13 @@ export type TraderSummary = {
   wbtcLong: number;
   wstethShort: number;
   wbtcShort: number;
+  notionalValueUsd: number;
+  ethLongExposureUsd: number;
+  ethShortExposureUsd: number;
+  ethNetExposureUsd: number;
+  btcLongExposureUsd: number;
+  btcShortExposureUsd: number;
+  btcNetExposureUsd: number;
   collateralValueUsd: number;
   debtValueUsd: number;
   equityUsd: number;
@@ -153,6 +160,13 @@ function mapTrader(row: Record<string, unknown>): TraderSummary {
     wbtcLong: toNumber(row.wbtcLong),
     wstethShort: toNumber(row.wstethShort),
     wbtcShort: toNumber(row.wbtcShort),
+    notionalValueUsd: toNumber(row.notionalValueUsd),
+    ethLongExposureUsd: toNumber(row.ethLongExposureUsd),
+    ethShortExposureUsd: toNumber(row.ethShortExposureUsd),
+    ethNetExposureUsd: toNumber(row.ethNetExposureUsd),
+    btcLongExposureUsd: toNumber(row.btcLongExposureUsd),
+    btcShortExposureUsd: toNumber(row.btcShortExposureUsd),
+    btcNetExposureUsd: toNumber(row.btcNetExposureUsd),
     collateralValueUsd: toNumber(row.collateralValueUsd),
     debtValueUsd: toNumber(row.debtValueUsd),
     equityUsd: toNumber(row.equityUsd),
@@ -188,6 +202,25 @@ const traderSelect = `
     count(*) filter (where pool_name = 'WBTCLongPool')::int as "wbtcLong",
     count(*) filter (where pool_name = 'WstETHShortPool')::int as "wstethShort",
     count(*) filter (where pool_name = 'WBTCShortPool')::int as "wbtcShort",
+    coalesce(sum(collateral_value_usd) filter (where pool_name = 'WstETHLongPool'), 0)::float8 as "ethLongExposureUsd",
+    coalesce(sum(debt_value_usd) filter (where pool_name = 'WstETHShortPool'), 0)::float8 as "ethShortExposureUsd",
+    (
+      coalesce(sum(collateral_value_usd) filter (where pool_name = 'WstETHLongPool'), 0) -
+      coalesce(sum(debt_value_usd) filter (where pool_name = 'WstETHShortPool'), 0)
+    )::float8 as "ethNetExposureUsd",
+    coalesce(sum(collateral_value_usd) filter (where pool_name = 'WBTCLongPool'), 0)::float8 as "btcLongExposureUsd",
+    coalesce(sum(debt_value_usd) filter (where pool_name = 'WBTCShortPool'), 0)::float8 as "btcShortExposureUsd",
+    (
+      coalesce(sum(collateral_value_usd) filter (where pool_name = 'WBTCLongPool'), 0) -
+      coalesce(sum(debt_value_usd) filter (where pool_name = 'WBTCShortPool'), 0)
+    )::float8 as "btcNetExposureUsd",
+    coalesce(sum(
+      case
+        when side = 'long' then collateral_value_usd
+        when side = 'short' then debt_value_usd
+        else 0
+      end
+    ), 0)::float8 as "notionalValueUsd",
     coalesce(sum(collateral_value_usd), 0)::float8 as "collateralValueUsd",
     coalesce(sum(debt_value_usd), 0)::float8 as "debtValueUsd",
     coalesce(sum(equity_usd), 0)::float8 as "equityUsd",
@@ -284,8 +317,7 @@ export async function getDashboardData(): Promise<DashboardData> {
         client.query<Record<string, unknown>>(`
           ${traderSelect}
           group by owner
-          order by positions desc, pools desc, "equityUsd" desc, owner asc
-          limit 25
+          order by "notionalValueUsd" desc, positions desc, owner asc
         `)
       ]);
 
@@ -459,4 +491,14 @@ export function formatPercent(value: number) {
     style: "percent",
     maximumFractionDigits: 1
   }).format(value);
+}
+
+export function displayInstrument(collateral: string) {
+  return collateral.toLowerCase().includes("btc") ? "BTC" : "ETH";
+}
+
+export function displayPool(poolName: string) {
+  const instrument = poolName.toLowerCase().includes("btc") ? "BTC" : "ETH";
+  const side = poolName.toLowerCase().includes("short") ? "Short" : "Long";
+  return `${instrument} ${side}`;
 }

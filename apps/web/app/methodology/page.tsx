@@ -1,8 +1,8 @@
 const trackedPools = [
-  ["WstETHLongPool", "long", "wstETH"],
-  ["WstETHShortPool", "short", "wstETH"],
-  ["WBTCLongPool", "long", "WBTC"],
-  ["WBTCShortPool", "short", "WBTC"]
+  ["ETH Long", "long", "ETH"],
+  ["ETH Short", "short", "ETH"],
+  ["BTC Long", "long", "BTC"],
+  ["BTC Short", "short", "BTC"]
 ];
 
 export default function MethodologyPage() {
@@ -11,33 +11,33 @@ export default function MethodologyPage() {
       <p className="eyebrow">Methodology</p>
       <h1>Blockchain-first f(x) trader profiles</h1>
       <p className="muted">
-        This app treats verified f(x) contracts and live Ethereum reads as the source of truth. External web
-        leaderboards can be useful comparison material, but they are not used for displayed trader equity, debt, or
-        risk metrics.
+        This dashboard uses public Ethereum data from verified f(x) contracts to show current position exposure and
+        wallet-level risk. Values are snapshot estimates for research purposes, not financial advice.
       </p>
 
       <div className="card-grid compact">
         <article className="card">
-          <p className="eyebrow">Source of truth</p>
-          <h2>On-chain pool state</h2>
+          <p className="eyebrow">Source</p>
+          <h2>Verified contract data</h2>
           <p className="muted">
-            Current positions are discovered from position-pool contracts using protocol view methods, then ownership
-            is confirmed with each pool's ERC-721 owner lookup.
+            Current positions are discovered from public f(x) position-pool contracts and matched to the wallet that
+            currently owns each position NFT.
           </p>
         </article>
         <article className="card">
           <p className="eyebrow">Metric type</p>
-          <h2>Current marks</h2>
+          <h2>Current snapshot values</h2>
           <p className="muted">
-            Equity, debt, and debt ratio are current mark-to-oracle values. They are not all-time realized PnL.
+            Equity, debt, and debt ratio are current values based on oracle prices. They are not all-time realized
+            profit/loss.
           </p>
         </article>
         <article className="card">
           <p className="eyebrow">Historical PnL</p>
-          <h2>Not guessed</h2>
+          <h2>Not shown yet</h2>
           <p className="muted">
-            Realized PnL requires historical operation cashflows from manager events. Until those events are fully
-            indexed, the UI intentionally avoids showing realized PnL.
+            Realized profit/loss requires a complete record of historical deposits, withdrawals, debt changes, and fees.
+            Until that is available, the site does not display realized PnL.
           </p>
         </article>
       </div>
@@ -53,7 +53,7 @@ export default function MethodologyPage() {
           <thead>
             <tr>
               <th>Step</th>
-              <th>Contract read</th>
+              <th>Data read</th>
               <th>Purpose</th>
             </tr>
           </thead>
@@ -61,27 +61,27 @@ export default function MethodologyPage() {
             <tr>
               <td>1</td>
               <td><code>getNextPositionId()</code></td>
-              <td>Find the highest position ID range to scan for each tracked pool.</td>
+              <td>Find the position range for each tracked pool.</td>
             </tr>
             <tr>
               <td>2</td>
               <td><code>getPosition(tokenId)</code></td>
-              <td>Read raw collateral and raw debt for every candidate position ID.</td>
+              <td>Read collateral and debt for each candidate position.</td>
             </tr>
             <tr>
               <td>3</td>
               <td><code>ownerOf(tokenId)</code></td>
-              <td>Keep only owner-confirmed open positions and assign them to wallets.</td>
+              <td>Keep only open positions with a confirmed current owner.</td>
             </tr>
             <tr>
               <td>4</td>
               <td><code>priceOracle()</code> + <code>getExchangePrice()</code></td>
-              <td>Fetch the live pool oracle mark used for current valuation.</td>
+              <td>Fetch the oracle price used for current valuation.</td>
             </tr>
             <tr>
               <td>5</td>
               <td><code>getPositionDebtRatio(tokenId)</code></td>
-              <td>Read protocol debt ratio directly instead of estimating liquidation risk off-site.</td>
+              <td>Read the current debt ratio used for risk monitoring.</td>
             </tr>
           </tbody>
         </table>
@@ -97,9 +97,9 @@ export default function MethodologyPage() {
         <table>
           <thead>
             <tr>
-              <th>Pool</th>
+              <th>Market</th>
               <th>Side</th>
-              <th>Collateral</th>
+              <th>Instrument</th>
             </tr>
           </thead>
           <tbody>
@@ -124,53 +124,20 @@ export default function MethodologyPage() {
         <article className="card">
           <h2>Collateral value</h2>
           <p className="muted">
-            Raw collateral is converted to token units and marked with the pool oracle price. For wstETH pools this is
-            a wstETH-denominated collateral mark; for WBTC pools this is a WBTC-denominated collateral mark.
+            Collateral is converted to token units and valued with the current oracle price for the relevant pool.
           </p>
         </article>
         <article className="card">
           <h2>Debt value</h2>
           <p className="muted">
-            Raw debt is converted from 18-decimal debt units into its current notional value. It is shown separately so
-            leveraged positions are not mistaken for unencumbered collateral.
+            Debt is converted into its current value and shown separately so leveraged positions are easy to read.
           </p>
         </article>
         <article className="card">
           <h2>Current equity</h2>
           <p className="muted">
-            Current equity is the snapshot mark after subtracting debt value from collateral value. It changes as pool
-            state and oracle prices move.
-          </p>
-        </article>
-      </div>
-
-      <div className="section-header">
-        <div>
-          <p className="eyebrow">RPC budget</p>
-          <h2>Current positions vs historical PnL</h2>
-        </div>
-      </div>
-      <div className="card-grid compact">
-        <article className="card">
-          <h2>Page-load path</h2>
-          <p className="muted">
-            Trader pages upsert the requested wallet into <code>fx_known_wallets</code>. Current-position snapshots can be
-            refreshed by the bounded pool scanner without reconstructing full wallet history on demand.
-          </p>
-        </article>
-        <article className="card">
-          <h2>Maintenance path</h2>
-          <p className="muted">
-            The <code>maintain-known-wallets</code> job seeds the wallet set from current owners and indexed position
-            transfers. Historical realized PnL jobs should consume this set incrementally with per-wallet cursors.
-          </p>
-        </article>
-        <article className="card">
-          <h2>Global parity</h2>
-          <p className="muted">
-            Homepage global trackers define open interest as
-            xPOSITION long notional plus sPOSITION borrowed exposure; current equity remains an app-specific snapshot
-            metric.
+            Current equity is the snapshot estimate after subtracting debt value from collateral value. It changes as
+            pool state and oracle prices move.
           </p>
         </article>
       </div>
@@ -184,20 +151,23 @@ export default function MethodologyPage() {
       <div className="card warning">
         <ul className="method-list">
           <li>
-            Realized historical PnL is not displayed yet. It needs manager-operation event indexing for deposits,
-            withdrawals, debt changes, redemptions, liquidations, and fees.
+            Realized historical PnL is not displayed yet. It requires complete indexing for deposits, withdrawals,
+            debt changes, redemptions, liquidations, and fees.
           </li>
           <li>
-            Broad historical <code>eth_getLogs</code> scans are not reliable on the current free RPC path. The durable
-            path is to index verified manager and pool events with Envio/HyperIndex.
+            Historical coverage is still being expanded, so current snapshot pages may not include closed positions or
+            complete past activity.
           </li>
           <li>
-            Snapshot counts are current at the last sync time. They are refreshed by the local chain snapshot job, not
-            by a browser-side live subscription.
+            Snapshot counts are current as of the last refresh. They are refreshed periodically and are not a live
+            browser-side subscription.
           </li>
           <li>
-            External leaderboard ROI/PnL values from f(x) or third-party dashboards are intentionally excluded from
-            these profile metrics unless explicitly labeled as comparison data in a future view.
+            Metrics may differ from other dashboards because each site can use different coverage, refresh timing, and
+            calculation methods.
+          </li>
+          <li>
+            This dashboard is informational only and should not be treated as trading, investment, tax, or legal advice.
           </li>
         </ul>
       </div>

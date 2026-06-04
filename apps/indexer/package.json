@@ -7,7 +7,7 @@
     "codegen": "envio codegen",
     "dev": "envio dev",
     "start": "envio start",
-    "test": "vitest run --test-timeout=10000",
+    "test": "ENVIO_RPC_URL=http://127.0.0.1:18545 vitest run --test-timeout=10000",
     "build": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
