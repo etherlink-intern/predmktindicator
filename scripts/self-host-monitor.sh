@@ -12,6 +12,7 @@ if [ -f .env ]; then
 fi
 
 APP_HEALTH_URL="${PUBLIC_APP_URL:-http://localhost:${WEB_PORT:-3000}}/api/health"
+RPC_ROUTER_HEALTH_URL="http://${RPC_ROUTER_BIND_HOST:-127.0.0.1}:${RPC_ROUTER_PORT:-18545}/health"
 failures=0
 
 section() {
@@ -33,7 +34,7 @@ section "Docker Compose services"
 docker compose ps
 
 section "Container health"
-for service in postgres web cron postgres-backup; do
+for service in postgres rpc-router web cron postgres-backup; do
   cid="$(docker compose ps -q "$service" 2>/dev/null || true)"
   if [ -z "$cid" ]; then
     echo "FAIL - $service is not created" >&2
@@ -73,6 +74,13 @@ if command -v curl >/dev/null 2>&1; then
   check "GET $APP_HEALTH_URL" curl -fsS --max-time 10 "$APP_HEALTH_URL"
 else
   echo "WARN - curl is not installed; skipping app health request"
+fi
+
+section "RPC router health"
+if command -v curl >/dev/null 2>&1; then
+  check "GET $RPC_ROUTER_HEALTH_URL" curl -fsS --max-time 10 "$RPC_ROUTER_HEALTH_URL"
+else
+  echo "WARN - curl is not installed; skipping RPC router health request"
 fi
 
 section "Resource snapshot"

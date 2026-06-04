@@ -8,6 +8,15 @@ importers:
 
   .: {}
 
+  apps/rpc-router:
+    devDependencies:
+      '@types/node':
+        specifier: ^24.10.1
+        version: 24.12.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
   apps/web:
     dependencies:
       '@types/pg':

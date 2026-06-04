@@ -8,6 +8,9 @@
     "start": "pnpm --filter @fx-trader-profiles/web start",
     "lint": "pnpm --filter @fx-trader-profiles/web lint",
     "test": "pnpm --filter @fx-trader-profiles/web test",
+    "rpc-router:dev": "pnpm --filter @fx-trader-profiles/rpc-router dev",
+    "rpc-router:start": "pnpm --filter @fx-trader-profiles/rpc-router start",
+    "rpc-router:test": "pnpm --filter @fx-trader-profiles/rpc-router test",
     "db:push": "echo \"TODO: add Drizzle migrations in Phase 0\"",
     "scripts:discover-contracts": "pnpm discover:contracts",
     "discover:contracts": "echo \"TODO: implement workers/discover-contracts.ts in Phase 2\""
