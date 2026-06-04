@@ -18,6 +18,10 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
             <a href="/leaderboard">Leaderboard</a>
             <a href="/methodology">Methodology</a>
             <a href="/privacy">Privacy</a>
+            <span className="nav-spacer" />
+            <a className="nav-external" href="https://fxprotocolstats.com" target="_blank" rel="noopener noreferrer">
+              Protocol stats ↗
+            </a>
           </nav>
           {children}
           <footer style={{

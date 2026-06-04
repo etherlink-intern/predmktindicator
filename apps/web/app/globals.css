@@ -51,9 +51,23 @@ h2 {
 
 .nav {
   display: flex;
-  gap: 12px;
-  margin-bottom: 28px;
+  gap: 16px;
+  margin-bottom: 48px;
   color: var(--muted);
+}
+
+.nav-spacer {
+  flex: 1;
+}
+
+.nav-external {
+  color: rgba(148, 163, 184, 0.6);
+  font-size: 13px;
+  transition: color 0.15s;
+}
+
+.nav-external:hover {
+  color: var(--accent);
 }
 
 .card-grid {
