@@ -6,13 +6,13 @@ This package contains the local Envio HyperIndex scaffold for the f(x) trader pr
 
 The current indexer is a bounded Ethereum mainnet f(x) Protocol starter indexer.
 
-It indexes the verified f(x) WstETH LongPool from blocks `23689392..23690000` through the local RPC router. This proves that the local stack works end-to-end on real f(x) position-transfer activity:
+It indexes all verified current f(x) position pools — WstETH/WBTC across Long/Short — from blocks `23678000..23694600` through the local RPC router. This proves that the local stack works end-to-end on real f(x) position-transfer activity across every current collateral/side pair:
 
 - `rpc-router` resolves inside Docker as `http://rpc-router:8545`
 - Envio writes f(x) entities into its own Postgres database
 - Hasura exposes the indexed f(x) entities over GraphQL
 
-The current bounded window captures a compact recent WstETH LongPool window with observed position NFT `Transfer` activity.
+The current bounded window captures compact recent windows with observed position NFT `Transfer` activity for WstETHLongPool, WBTCLongPool, WstETHShortPool, and WBTCShortPool.
 
 Verified contract targets live in `contracts/fx-v2.json`.
 
@@ -73,6 +73,8 @@ query {
     id
     name
     category
+    side
+    collateral
     observedEventCount
   }
   FxEvent(limit: 20, order_by: [{ blockNumber: asc }, { logIndex: asc }]) {
@@ -82,7 +84,7 @@ query {
     transactionHash
     contract { id name }
   }
-  FxPositionTransfer(limit: 5, order_by: { id: asc }) {
+  FxPositionTransfer(limit: 20, order_by: { id: asc }) {
     id
     tokenId
     from

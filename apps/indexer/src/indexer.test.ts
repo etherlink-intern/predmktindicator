@@ -4,6 +4,9 @@ import { createTestIndexer, TestHelpers, type FxContract } from "envio";
 const { Addresses } = TestHelpers;
 
 const WSTETH_LONG_POOL = "0x6Ecfa38FeE8a5277B91eFdA204c235814F0122E8";
+const WBTC_LONG_POOL = "0xAB709e26Fa6B0A30c119D8c55B887DeD24952473";
+const WSTETH_SHORT_POOL = "0x25707b9e6690B52C60aE6744d711cf9C1dFC1876";
+const WBTC_SHORT_POOL = "0xA0cC8162c523998856D59065fAa254F87D20A5b0";
 const LONG_POOL_MANAGER = "0x250893CA4Ba5d05626C785e8da758026928FCD24";
 
 describe("f(x) lifecycle handlers", () => {
@@ -92,6 +95,8 @@ describe("f(x) lifecycle handlers", () => {
     expect(contract).toMatchObject({
       name: "WstETHLongPool",
       category: "position-pool",
+      side: "long",
+      collateral: "wstETH",
       observedEventCount: 1,
     });
     expect(transfer).toMatchObject({
@@ -103,4 +108,48 @@ describe("f(x) lifecycle handlers", () => {
       logIndex: 12,
     });
   });
+  it("labels all current f(x) position pools by side and collateral", async () => {
+    const indexer = createTestIndexer();
+    const pools = [
+      { address: WSTETH_LONG_POOL, expected: { name: "WstETHLongPool", side: "long", collateral: "wstETH" } },
+      { address: WBTC_LONG_POOL, expected: { name: "WBTCLongPool", side: "long", collateral: "WBTC" } },
+      { address: WSTETH_SHORT_POOL, expected: { name: "WstETHShortPool", side: "short", collateral: "wstETH" } },
+      { address: WBTC_SHORT_POOL, expected: { name: "WBTCShortPool", side: "short", collateral: "WBTC" } },
+    ] as const;
+
+    await indexer.process({
+      chains: {
+        1: {
+          simulate: pools.map((pool, index) => ({
+            contract: "FxLifecycle",
+            event: "Transfer",
+            srcAddress: pool.address,
+            logIndex: index + 1,
+            block: {
+              number: 23688000 + index,
+              timestamp: 1761800000 + index,
+            },
+            transaction: {
+              hash: `0x${String(index + 1).padStart(64, "0")}` as `0x${string}`,
+            },
+            params: {
+              from: Addresses.mockAddresses[1]!,
+              to: Addresses.mockAddresses[2]!,
+              tokenId: BigInt(index + 1),
+            },
+          })),
+        },
+      },
+    });
+
+    for (const pool of pools) {
+      const contract = await indexer.FxContract.getOrThrow(pool.address.toLowerCase());
+      expect(contract).toMatchObject({
+        ...pool.expected,
+        category: "position-pool",
+        observedEventCount: 1,
+      });
+    }
+  });
+
 });

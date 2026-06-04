@@ -3,6 +3,8 @@ type FxContract {
   id: ID!
   name: String!
   category: String!
+  side: String
+  collateral: String
   observedEventCount: Int!
   firstObservedBlock: Int
   lastObservedBlock: Int

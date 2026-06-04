@@ -18,9 +18,9 @@ POSTGRES_CONTAINER="fx-trader-profiles-envio-postgres"
 HASURA_CONTAINER="fx-trader-profiles-envio-hasura"
 INDEXER_CONTAINER="fx-trader-profiles-envio-indexer"
 
-required_fx_contracts=1
-required_fx_events=6
-required_position_transfers=6
+required_fx_contracts=4
+required_fx_events=16
+required_position_transfers=16
 
 echo "== Envio f(x) container state =="
 for container in "$POSTGRES_CONTAINER" "$HASURA_CONTAINER" "$INDEXER_CONTAINER"; do
@@ -79,7 +79,7 @@ port = os.environ.get("HASURA_EXTERNAL_PORT", "8088")
 query = {
     "query": """
     query EnvioFxVerification {
-      FxContract(limit: 10, order_by: { id: asc }) { id name category observedEventCount }
+      FxContract(limit: 10, order_by: { id: asc }) { id name category side collateral observedEventCount }
       FxEvent(limit: 20, order_by: [{ blockNumber: asc }, { logIndex: asc }]) {
         id
         eventName
@@ -87,7 +87,7 @@ query = {
         transactionHash
         contract { id name }
       }
-      FxPositionTransfer(limit: 10, order_by: { id: asc }) { id tokenId from to }
+      FxPositionTransfer(limit: 500, order_by: { id: asc }) { id tokenId from to contract { id name side collateral } }
     }
     """
 }
@@ -110,8 +110,15 @@ print(json.dumps({
     "contracts": contracts,
     "firstEvents": events[:3],
 }, indent=2))
-if len(contracts) < 1 or len(events) < 6 or len(transfers) < 6:
+expected_names = {"WstETHLongPool", "WBTCLongPool", "WstETHShortPool", "WBTCShortPool"}
+names = {contract["name"] for contract in contracts}
+transfer_names = {transfer["contract"]["name"] for transfer in transfers}
+if len(contracts) < 4 or len(events) < 16 or len(transfers) < 16:
     raise SystemExit("unexpected GraphQL row count")
+if not expected_names.issubset(names):
+    raise SystemExit(f"missing expected pool contracts: {sorted(expected_names - names)}")
+if not expected_names.issubset(transfer_names):
+    raise SystemExit(f"missing expected pool transfers: {sorted(expected_names - transfer_names)}")
 PY
 
 echo

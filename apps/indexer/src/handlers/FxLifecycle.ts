@@ -1,13 +1,34 @@
 import { indexer, type FxContract, type FxEvent, type FxPositionTransfer } from "envio";
 
-const CONTRACT_METADATA: Record<string, { name: string; category: string }> = {
+const CONTRACT_METADATA: Record<string, { name: string; category: string; side?: string; collateral?: string }> = {
   "0x250893ca4ba5d05626c785e8da758026928fcd24": {
     name: "LongPoolManager",
     category: "position-manager",
+    side: "long",
   },
   "0x6ecfa38fee8a5277b91efda204c235814f0122e8": {
     name: "WstETHLongPool",
     category: "position-pool",
+    side: "long",
+    collateral: "wstETH",
+  },
+  "0xab709e26fa6b0a30c119d8c55b887ded24952473": {
+    name: "WBTCLongPool",
+    category: "position-pool",
+    side: "long",
+    collateral: "WBTC",
+  },
+  "0x25707b9e6690b52c60ae6744d711cf9c1dfc1876": {
+    name: "WstETHShortPool",
+    category: "position-pool",
+    side: "short",
+    collateral: "wstETH",
+  },
+  "0xa0cc8162c523998856d59065faa254f87d20a5b0": {
+    name: "WBTCShortPool",
+    category: "position-pool",
+    side: "short",
+    collateral: "WBTC",
   },
   "0x33636d49fbefbe798e15e7f356e8dbef543cc708": {
     name: "RouterDiamond",
@@ -76,6 +97,8 @@ async function upsertContract(context: FxContext, event: FxBaseEvent): Promise<F
     id,
     name: metadata.name,
     category: metadata.category,
+    side: metadata.side,
+    collateral: metadata.collateral,
     observedEventCount: (existing?.observedEventCount ?? 0) + 1,
     firstObservedBlock,
     lastObservedBlock,

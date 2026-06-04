@@ -21,10 +21,11 @@ contracts:
 
 chains:
   - id: 1
-    # Bounded f(x) starter pass over a compact WstETH LongPool window with
-    # observed real position Transfer activity.
-    start_block: 23689392
-    end_block: 23690000
+    # Bounded f(x) starter pass over compact windows with observed real
+    # position Transfer activity across all verified current position pools:
+    # WstETH/WBTC x Long/Short.
+    start_block: 23678000
+    end_block: 23694600
     rpc:
       - url: ${ENVIO_RPC_URL}
         for: sync
@@ -34,3 +35,6 @@ chains:
       - name: FxLifecycle
         address:
           - "0x6Ecfa38FeE8a5277B91eFdA204c235814F0122E8" # WstETHLongPool
+          - "0xAB709e26Fa6B0A30c119D8c55B887DeD24952473" # WBTCLongPool
+          - "0x25707b9e6690B52C60aE6744d711cf9C1dFC1876" # WstETHShortPool
+          - "0xA0cC8162c523998856D59065fAa254F87D20A5b0" # WBTCShortPool
