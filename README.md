@@ -6,17 +6,18 @@ The MVP is designed to use a **hosted subgraph/indexer** for Ethereum event inde
 
 ## Current status
 
-This repository is currently a **Phase 0 scaffold**. It includes:
+This repository currently serves a **live f(x) Protocol trader dashboard**:
 
-- A Next.js App Router web app shell under `apps/web`.
-- Placeholder pages for home, leaderboard, trader profile, position detail, and methodology.
-- `/api/health` with Postgres connectivity checks.
-- Protected placeholder job endpoints for cron-triggered workers.
+- A Next.js App Router web app under `apps/web`.
+- Live homepage with pool matrix, global trackers, and equity stats.
+- Live leaderboard, trader profiles, and position detail pages.
+- Privacy policy and blockchain methodology disclosure pages.
+- Postgres-backed data synced via the Envio hosted indexer.
 - Docker Compose for Postgres, web, cron, backups, and Watchtower.
 - Self-host setup and monitoring scripts.
 - A detailed implementation plan in `docs/fx-user-tracker-research.md`.
 
-It does **not** yet include production contract discovery, real leaderboard ingestion, subgraph deployment, position syncing, enrichment, or trader-metric computation.
+Not yet shipped: wallet-connect flows, user accounts, trading frontends, realized historical PnL, or any form of user data collection.
 
 ## Architecture
 
@@ -158,11 +159,18 @@ Important rules:
 
 | Route | Status | Purpose |
 | --- | --- | --- |
+| `GET /` | live | Dashboard homepage with pool matrix, global trackers, and equity overview. |
+| `/leaderboard` | live | Trader leaderboard sorted by equity. |
+| `/traders/[address]` | live | Individual trader profile with position history. |
+| `/positions/[positionId]` | live | Position detail view. |
+| `/methodology` | live | Blockchain methodology and data-sourcing disclosure. |
+| `/privacy` | live | Privacy policy — no user data collection, read-only blockchain viewer. |
 | `GET /api/health` | implemented | Checks app, Postgres connectivity, and subgraph configuration. |
 | `POST /api/jobs/snapshot-leaderboard` | placeholder | Future leaderboard snapshot worker trigger. |
 | `POST /api/jobs/sync-subgraph` | placeholder | Future subgraph sync worker trigger. |
 | `POST /api/jobs/enrich-positions` | placeholder | Future RPC enrichment worker trigger. |
 | `POST /api/jobs/compute-trader-metrics` | placeholder | Future metrics/tag computation worker trigger. |
+| `POST /api/jobs/maintain-known-wallets` | placeholder | Future known-wallet set maintenance worker trigger. |
 
 ## Key docs
 
