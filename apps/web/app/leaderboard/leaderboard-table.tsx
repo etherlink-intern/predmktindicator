@@ -76,10 +76,10 @@ function parseNumber(value: string) {
 
 function riskTone(debtRatio: number) {
   const clamped = Math.max(0, Math.min(debtRatio, 1));
-  if (clamped >= 0.9) return "risk-cell critical";
-  if (clamped >= 0.8) return "risk-cell high";
-  if (clamped >= 0.65) return "risk-cell elevated";
-  return "risk-cell normal";
+  if (clamped >= 0.9) return "risk-badge critical";
+  if (clamped >= 0.8) return "risk-badge high";
+  if (clamped >= 0.65) return "risk-badge elevated";
+  return "risk-badge normal";
 }
 
 function instrumentBreakdown(trader: TraderSummary): Array<{ asset: string; side: string; count: number; pillClass: string }> {
@@ -92,8 +92,8 @@ function instrumentBreakdown(trader: TraderSummary): Array<{ asset: string; side
 }
 
 function netExposureTone(value: number) {
-  if (Math.abs(value) < 1) return "net-exposure flat";
-  return value > 0 ? "net-exposure long" : "net-exposure short";
+  if (Math.abs(value) < 1) return "net-badge flat";
+  return value > 0 ? "net-badge long" : "net-badge short";
 }
 
 function netExposureLabel(value: number) {
@@ -140,7 +140,7 @@ export function LeaderboardTable({ traders }: LeaderboardTableProps) {
 
   return (
     <>
-      <div className="filter-card" aria-label="Leaderboard filters">
+      <div className="filter-bar" aria-label="Leaderboard filters">
         <label>
           <span>Minimum open positions</span>
           <input
@@ -168,7 +168,7 @@ export function LeaderboardTable({ traders }: LeaderboardTableProps) {
         </p>
       </div>
 
-      <div className="table-card">
+      <div className="table-wrap">
         <table className="leaderboard-table">
           <thead>
             <tr>

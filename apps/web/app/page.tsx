@@ -60,9 +60,9 @@ function formatTime(value: string | null) {
 function MarketOverviewSkeleton() {
   return (
     <div className="market-terminal skeleton-terminal" aria-label="Loading market overview">
-      <div className="market-hero-grid">
+      <div className="card-grid" style={{ gridTemplateColumns: "repeat(4, 1fr)" }}>
         {Array.from({ length: 4 }).map((_, index) => (
-          <div className="market-panel skeleton-panel" key={index}>
+          <div className="card skeleton" key={index}>
             <span className="skeleton-line short" />
             <span className="skeleton-line value" />
             <span className="skeleton-line" />
@@ -126,79 +126,64 @@ function MarketOverviewTerminal({
 
   return (
     <section className="market-terminal" aria-label="Market overview position book snapshot">
-      <div className="section-header market-terminal-header">
+      <div className="section-header">
         <div>
           <p className="eyebrow">Market Overview</p>
           <h2>Position Book Snapshot</h2>
         </div>
-        <span className="terminal-chip" title="Current open-position snapshot plus indexed event history">
-          live book / indexed history
-        </span>
+        <span className="small muted" style={{ fontWeight: 600 }}>live book / indexed history</span>
       </div>
 
-      <div className="market-hero-grid">
-        <article className="market-panel market-panel-primary" title="Estimated exposure across tracked active positions.">
-          <p className="market-label">Open Interest</p>
-          <h3>{formatCompactUsd(openInterestUsd)}</h3>
-          <div className="market-micro-row">
-            <span>tracked notional</span>
-            <span className="neutral-dot">snapshot</span>
-          </div>
+      <div className="card-grid" style={{ gridTemplateColumns: "repeat(4, 1fr)" }}>
+        <article className="card-hero" style={{ gridColumn: "1" }} title="Estimated exposure across tracked active positions.">
+          <p className="metric-label" style={{ marginBottom: 4 }}>Open Interest</p>
+          <div className="metric-value">{formatCompactUsd(openInterestUsd)}</div>
+          <div className="metric-detail">tracked notional / snapshot</div>
         </article>
 
-        <article className="market-panel market-panel-bias" title={`Long ${formatUsd(longUsd)} / Short ${formatUsd(shortUsd)} / ETH: ${formatCompactUsd(ethLongUsd)} ${formatCompactUsd(ethShortUsd)} / BTC: ${formatCompactUsd(btcLongUsd)} ${formatCompactUsd(btcShortUsd)}`}>
-          <div className="panel-topline">
-            <p className="market-label">Position Bias</p>
-            <span className="bias-badge">{longPct.toFixed(1)}% Long Bias</span>
+        <article className="card-hero" style={{ gridColumn: "2 / span 2" }} title={`Long ${formatUsd(longUsd)} / Short ${formatUsd(shortUsd)}`}>
+          <p className="metric-label" style={{ marginBottom: 4 }}>Position Bias</p>
+          <div className="metric-value">{formatCompactUsd(longUsd)} <span className="muted small" style={{ fontWeight: 400 }}>long</span></div>
+          <div style={{ height: 6, borderRadius: 999, background: "rgba(148,163,184,0.10)", overflow: "hidden", display: "flex", margin: "8px 0 4px" }}>
+            <span style={{ width: `${longPct}%`, background: "rgba(34,197,94,0.50)", borderRadius: "999px 0 0 999px" }} />
+            <span style={{ width: `${shortPct}%`, background: "rgba(239,68,68,0.50)", borderRadius: "0 999px 999px 0" }} />
           </div>
-          <div className="bias-values">
-            <span><b>Long</b> {formatCompactUsd(longUsd)}</span>
-            <span><b>Short</b> {formatCompactUsd(shortUsd)}</span>
-          </div>
-          <div className="dominance-track" aria-label={`Long ${longPct.toFixed(1)}%, Short ${shortPct.toFixed(1)}%`}>
-            <span className="dominance-long" style={{ width: `${longPct}%` }} />
-            <span className="dominance-short" style={{ width: `${shortPct}%` }} />
-          </div>
-          <div style={{ marginTop: "14px", borderTop: "1px solid rgba(148,163,184,0.08)", paddingTop: "8px" }}>
+          <div className="metric-detail">{longPct.toFixed(1)}% long · {shortPct.toFixed(1)}% short · {formatCompactUsd(shortUsd)} short</div>
+          <div style={{ marginTop: 10, borderTop: "1px solid var(--border)", paddingTop: 8 }}>
             <BiasInstrumentRow label="ETH" longUsd={ethLongUsd} shortUsd={ethShortUsd} color="#627eea" />
             <BiasInstrumentRow label="BTC" longUsd={btcLongUsd} shortUsd={btcShortUsd} color="#f7931a" />
           </div>
-          <div className="market-micro-row" style={{ marginTop: "6px" }}>
-            <span>long {longPct.toFixed(1)}%</span>
-            <span>short {shortPct.toFixed(1)}%</span>
+        </article>
+
+        <article className="card-hero" title={`Tracked debt ${formatUsd(debtUsd)}`}>
+          <p className="metric-label" style={{ marginBottom: 4 }}>Debt Utilization</p>
+          <div className="metric-value">{formatCompactUsd(debtUsd)}</div>
+          <div className="metric-detail">{debtUtilization.toFixed(1)}% of OI</div>
+          <div style={{ height: 6, borderRadius: 999, background: "rgba(148,163,184,0.10)", overflow: "hidden", marginTop: 8 }}>
+            <span style={{ width: `${debtUtilization}%`, height: "100%", background: "rgba(56,189,248,0.50)", borderRadius: 999, display: "block" }} />
           </div>
         </article>
 
-        <article className="market-panel" title={`Tracked debt ${formatUsd(debtUsd)} / Open interest ${formatUsd(openInterestUsd)}`}>
-          <p className="market-label">Debt Utilization</p>
-          <h3>{formatCompactUsd(debtUsd)}</h3>
-          <div className="utilization-line">
-            <span style={{ width: `${debtUtilization}%` }} />
-          </div>
-          <div className="market-micro-row">
-            <span>{debtUtilization.toFixed(1)}% of OI</span>
-            <span>tracked debt</span>
-          </div>
-        </article>
-
-        <article className="market-panel market-panel-risk" title={`${formatUsd(riskNotionalUsd)} in tracked positions at or above an 80% debt ratio.`}>
-          <p className="market-label">Risk Watchlist</p>
-          <h3>{numberFormatter.format(riskPositions)}</h3>
-          <div className="risk-copy">
-            <strong>{formatCompactUsd(riskNotionalUsd)}</strong>
-            <span>above 80% debt ratio</span>
-          </div>
-          <div className="market-micro-row">
-            <span>{riskShare.toFixed(1)}% of OI</span>
-            <span>watchlist notional</span>
-          </div>
+        <article className="card-hero" title={`${formatUsd(riskNotionalUsd)} above 80% debt ratio`}>
+          <p className="metric-label" style={{ marginBottom: 4 }}>Risk Watchlist</p>
+          <div className="metric-value">{numberFormatter.format(riskPositions)}</div>
+          <div className="metric-detail">{formatCompactUsd(riskNotionalUsd)} above 80% debt ratio</div>
         </article>
       </div>
 
-      <div className="market-status-bar" aria-label="Secondary market status">
-        <span title="Known tracked wallets"><b>Wallets</b> {numberFormatter.format(wallets)}</span>
-        <span title="Indexed cashflow events"><b>Events</b> {numberFormatter.format(events)}</span>
-        <span title="Last current-position snapshot"><b>Updated</b> {formatTime(updatedAt)}</span>
+      <div className="status-bar" style={{ marginTop: 12 }} aria-label="Secondary market status">
+        <div className="status-bar-item">
+          <span className="status-bar-label">Wallets</span>
+          <span className="status-bar-value">{numberFormatter.format(wallets)}</span>
+        </div>
+        <div className="status-bar-item">
+          <span className="status-bar-label">Events</span>
+          <span className="status-bar-value">{numberFormatter.format(events)}</span>
+        </div>
+        <div className="status-bar-item">
+          <span className="status-bar-label">Updated</span>
+          <span className="status-bar-value">{formatTime(updatedAt)}</span>
+        </div>
       </div>
     </section>
   );
@@ -271,7 +256,7 @@ export default async function HomePage() {
       />
 
       {!dashboard.hasSnapshot ? (
-        <div className="card warning">
+        <div className="card-warning">
           <h2>Snapshot is being prepared</h2>
           <p className="muted">Position data will appear after the next dashboard refresh.</p>
         </div>
@@ -282,10 +267,10 @@ export default async function HomePage() {
               <p className="eyebrow">Pool overview</p>
               <h2>Open positions by pool</h2>
             </div>
-            <a className="button" href="/leaderboard">View trader leaderboard</a>
+            <a className="button" href="/leaderboard">View leaderboard →</a>
           </div>
 
-          <div className="table-card">
+          <div className="table-wrap">
             <table>
               <thead>
                 <tr>
