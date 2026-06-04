@@ -155,7 +155,6 @@ export default async function TraderPage({ params }: TraderPageProps) {
                   <th>Position</th>
                   <th>Market</th>
                   <th>Side</th>
-                  <th className="numeric">Realized PnL</th>
                   <th className="numeric">Fees paid</th>
                   <th className="numeric">Events</th>
                   <th>Status</th>
@@ -169,9 +168,6 @@ export default async function TraderPage({ params }: TraderPageProps) {
                     </td>
                     <td>{h.poolName !== h.poolAddress ? h.poolName : h.poolAddress.slice(0, 10) + "…"}</td>
                     <td><span className={`pill ${h.side}`}>{h.side === "unknown" ? "—" : h.side}</span></td>
-                    <td className="numeric" style={{ color: h.realizedPnlUsd >= 0 ? "var(--positive)" : "var(--negative)" }}>
-                      {formatUsd(h.realizedPnlUsd)}
-                    </td>
                     <td className="numeric">{formatUsd(h.feesUsd)}</td>
                     <td className="numeric">{nf.format(h.cashflowEventCount)}</td>
                     <td>

@@ -42,7 +42,6 @@ export type TraderSummary = {
   avgDebtRatio: number;
   maxDebtRatio: number;
   unrealizedPnlUsd: number;
-  totalPnlUsd: number;
   feesUsd: number;
   hasPositionHistory: boolean;
 };
@@ -68,7 +67,6 @@ export type HistoricalPosition = {
   poolName: string;
   side: string;
   tokenId: string;
-  realizedPnlUsd: number;
   feesUsd: number;
   cashflowEventCount: number;
   firstBlock: number;
@@ -199,7 +197,6 @@ function mapTrader(row: Record<string, unknown>): TraderSummary {
     avgDebtRatio: toNumber(row.avgDebtRatio),
     maxDebtRatio: toNumber(row.maxDebtRatio),
     unrealizedPnlUsd: toNumber(row.unrealizedPnlUsd),
-    totalPnlUsd: toNumber(row.totalPnlUsd),
     feesUsd: toNumber(row.feesUsd),
     hasPositionHistory: Boolean(row.hasPositionHistory)
   };
@@ -273,11 +270,7 @@ const traderSelect = `
           then debt_value_usd * (1 - entry_price_raw / (oracle_price * 1000000000000000000))
         else 0
       end
-    ), 0)::float8 + coalesce(sum(
-      case when side = 'short' then realized_pnl_raw / 1000000000000000000
-           else realized_pnl_raw * oracle_price / 1000000000000000000
-      end
-    ), 0)::float8 as "totalPnlUsd",
+    ), 0)::float8 as "unrealizedPnlUsd",
     coalesce(sum(
       case when side = 'short' then total_fees_raw / 1000000000000000000
            else total_fees_raw * oracle_price / 1000000000000000000
@@ -542,12 +535,6 @@ export async function getTraderProfile(address: string): Promise<TraderProfile |
              h.position_id::text as "tokenId",
              coalesce(
                case when coalesce(p.side, 'long') = 'short'
-                 then h.realized_pnl_raw / 1000000000000000000
-                 else h.realized_pnl_raw * coalesce(p.oracle_price, 0) / 1000000000000000000
-               end,
-             0)::float8 as "realizedPnlUsd",
-             coalesce(
-               case when coalesce(p.side, 'long') = 'short'
                  then h.total_fees_raw / 1000000000000000000
                  else h.total_fees_raw * coalesce(p.oracle_price, 0) / 1000000000000000000
                end,
@@ -577,7 +564,6 @@ export async function getTraderProfile(address: string): Promise<TraderProfile |
           poolName: String(row.poolName),
           side: String(row.side),
           tokenId: String(row.tokenId),
-          realizedPnlUsd: toNumber(row.realizedPnlUsd),
           feesUsd: toNumber(row.feesUsd),
           cashflowEventCount: Number(row.cashflowEventCount),
           firstBlock: Number(row.firstBlock),

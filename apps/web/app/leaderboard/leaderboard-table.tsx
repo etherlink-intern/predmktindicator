@@ -217,7 +217,6 @@ export function LeaderboardTable({ traders }: LeaderboardTableProps) {
                 `Notional ${formatUsd(trader.notionalValueUsd)}`,
                 `Equity ${formatUsd(trader.equityUsd)}`,
                 `Unrealized PnL ${trader.hasPositionHistory ? formatUsd(trader.unrealizedPnlUsd) : "not available"}`,
-                `Total PnL ${trader.hasPositionHistory ? formatUsd(trader.totalPnlUsd) : "not available"}`,
                 `Fees paid ${formatUsd(getFeesUsd(trader))}`,
                 instruments ? `Instruments: ${instruments}` : null
               ].filter(Boolean).join("\n");
