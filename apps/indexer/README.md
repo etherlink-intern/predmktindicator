@@ -4,15 +4,17 @@ This package contains the local Envio HyperIndex scaffold for the f(x) trader pr
 
 ## Current status
 
-The current indexer is a bounded Ethereum mainnet ERC-20 smoke indexer, not the final f(x) product indexer.
+The current indexer is a bounded Ethereum mainnet f(x) Protocol starter indexer.
 
-It indexes two UNI `Transfer` events from blocks `10861674..10861766` through the local RPC router. This proves that the local stack works end-to-end:
+It indexes the verified f(x) WstETH LongPool from blocks `23689392..23690000` through the local RPC router. This proves that the local stack works end-to-end on real f(x) position-transfer activity:
 
 - `rpc-router` resolves inside Docker as `http://rpc-router:8545`
-- Envio writes entities into its own Postgres database
-- Hasura exposes the indexed entities over GraphQL
+- Envio writes f(x) entities into its own Postgres database
+- Hasura exposes the indexed f(x) entities over GraphQL
 
-The real f(x) indexer should replace this smoke target only after verified f(x) contract addresses, start blocks, ABIs, and target events are pinned in `contracts/fx-v2.json`.
+The current bounded window captures a compact recent WstETH LongPool window with observed position NFT `Transfer` activity.
+
+Verified contract targets live in `contracts/fx-v2.json`.
 
 ## Ports
 
@@ -34,6 +36,7 @@ pnpm indexer:codegen
 pnpm indexer:build
 pnpm indexer:test
 pnpm indexer:dev
+pnpm indexer:reset
 pnpm indexer:verify
 pnpm indexer:ps
 pnpm indexer:logs
@@ -46,13 +49,19 @@ pnpm indexer:down
 docker compose --env-file .env -f docker-compose.yml -f docker-compose.indexer.yml up -d --build rpc-router envio-postgres envio-hasura envio-indexer
 ```
 
-The smoke indexer has an `end_block`, so it exits with code `0` after catching up. That is expected. `envio-indexer` uses `restart: on-failure` so successful completion does not restart-loop.
+The f(x) starter indexer has an `end_block`, so it exits with code `0` after catching up. That is expected. `envio-indexer` uses `restart: on-failure` so successful completion does not restart-loop.
+
+If `config.yaml` or `schema.graphql` changes incompatibly with existing local Envio storage, reset the bounded local indexer data and rerun:
+
+```bash
+pnpm indexer:reset
+```
 
 `pnpm indexer:codegen` regenerates `.envio/` generated types from `config.yaml` and `schema.graphql`. The `.envio/` directory is intentionally ignored, so run codegen before local typecheck/tests after a fresh clone or config/schema change.
 
-`pnpm indexer:verify` checks the bounded smoke run by validating container state, Hasura health, expected Postgres row counts, and a Hasura GraphQL query.
+`pnpm indexer:verify` checks the bounded f(x) run by validating container state, Hasura health, expected Postgres row counts, and a Hasura GraphQL query.
 
-## Query smoke data
+## Query f(x) data
 
 Hasura requires the local admin secret from the ignored `.env` file.
 
@@ -60,25 +69,33 @@ Example GraphQL query:
 
 ```graphql
 query {
-  SmokeTransfer(limit: 5, order_by: { id: asc }) {
+  FxContract(limit: 10, order_by: { id: asc }) {
     id
-    value
+    name
+    category
+    observedEventCount
   }
-  SmokeAccount(limit: 5, order_by: { id: asc }) {
+  FxEvent(limit: 20, order_by: [{ blockNumber: asc }, { logIndex: asc }]) {
     id
-    balance
-    sentTransferCount
-    receivedTransferCount
+    eventName
+    blockNumber
+    transactionHash
+    contract { id name }
+  }
+  FxPositionTransfer(limit: 5, order_by: { id: asc }) {
+    id
+    tokenId
+    from
+    to
   }
 }
 ```
 
-## Next step for real f(x) indexing
+## Next step for deeper f(x) indexing
 
-Do not guess contract addresses. Complete contract discovery first:
+The bounded starter indexer proves real f(x) indexing. The next product step is to expand from lifecycle/proxy events into the business events that power trader profiles:
 
-1. Verify f(x) v2 contract addresses and proxy targets from official docs/repos/explorers.
-2. Save the manifest to `contracts/fx-v2.json`.
-3. Save reviewed ABIs under `contracts/abis/`.
-4. Replace `ERC20Smoke` with f(x) contracts/events in `config.yaml`.
-5. Remove the smoke `end_block` only when running a real continuous indexer.
+1. Add manager/pool/router event handlers from `contracts/abis/*.events.json`.
+2. Select a bounded historical window with actual position open/close/add/remove activity.
+3. Add entities for trader addresses, position IDs, collateral/debt deltas, and pool snapshots.
+4. Remove the bounded `end_block` only when ready for a real continuous indexer.

@@ -1,15 +1,33 @@
-type SmokeAccount {
-  # Lowercase Ethereum account address.
+type FxContract {
+  # Lowercase Ethereum contract address.
   id: ID!
-  balance: BigInt!
-  sentTransferCount: Int!
-  receivedTransferCount: Int!
+  name: String!
+  category: String!
+  observedEventCount: Int!
+  firstObservedBlock: Int
+  lastObservedBlock: Int
 }
 
-type SmokeTransfer {
-  # Deterministic synthetic id from from/to/value for the current smoke target.
+type FxEvent {
+  # chain:block:logIndex
   id: ID!
-  from: SmokeAccount!
-  to: SmokeAccount!
-  value: BigInt!
+  contract: FxContract!
+  eventName: String!
+  blockNumber: Int!
+  blockTimestamp: Int!
+  transactionHash: String!
+  logIndex: Int!
+}
+
+type FxPositionTransfer {
+  # chain:block:logIndex
+  id: ID!
+  contract: FxContract!
+  tokenId: BigInt!
+  from: String!
+  to: String!
+  blockNumber: Int!
+  blockTimestamp: Int!
+  transactionHash: String!
+  logIndex: Int!
 }

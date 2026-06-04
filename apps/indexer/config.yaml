@@ -1,27 +1,36 @@
 # yaml-language-server: $schema=./node_modules/envio/evm.schema.json
 name: fx-trader-profiles-local-indexer
-description: Local Envio HyperIndex smoke indexer wired through the predmktindicator RPC router.
+description: Local Envio HyperIndex f(x) Protocol starter indexer wired through the predmktindicator RPC router.
 
-# This is intentionally a small ERC-20 smoke indexer until f(x) contracts/ABIs are
-# verified and pinned in contracts/fx-v2.json. It proves the local Envio +
-# rpc-router plumbing without pretending to index live f(x) product data.
+raw_events: false
+field_selection:
+  transaction_fields:
+    - hash
+    - from
+    - to
+
 contracts:
-  - name: ERC20Smoke
+  - name: FxLifecycle
     events:
-      - event: "Transfer(address indexed from, address indexed to, uint256 value)"
+      # Lifecycle events are kept in the ABI surface for deployment-window experiments.
+      - event: "Upgraded(address indexed implementation)"
+      - event: "AdminChanged(address previousAdmin, address newAdmin)"
+      - event: "OwnershipTransferred(address indexed previousOwner, address indexed newOwner)"
+      # f(x) position pools are ERC-721 style position tokens; Transfer tracks ownership.
+      - event: "Transfer(address indexed from, address indexed to, uint256 indexed tokenId)"
 
 chains:
   - id: 1
-    # Keep this narrow and deterministic for local POC. UNI's first mint occurs
-    # at block 10861674, so the indexer can prove event handling without a full
-    # historical backfill.
-    start_block: 10861674
-    end_block: 10861766
+    # Bounded f(x) starter pass over a compact WstETH LongPool window with
+    # observed real position Transfer activity.
+    start_block: 23689392
+    end_block: 23690000
     rpc:
       - url: ${ENVIO_RPC_URL}
         for: sync
       - url: ${ENVIO_RPC_URL}
         for: fallback
     contracts:
-      - name: ERC20Smoke
-        address: "0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984" # UNI token smoke target
+      - name: FxLifecycle
+        address:
+          - "0x6Ecfa38FeE8a5277B91eFdA204c235814F0122E8" # WstETHLongPool

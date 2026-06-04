@@ -23,7 +23,8 @@
     "indexer:logs": "docker compose --env-file .env -f docker-compose.yml -f docker-compose.indexer.yml logs -f envio-indexer",
     "indexer:ps": "docker compose --env-file .env -f docker-compose.yml -f docker-compose.indexer.yml ps rpc-router envio-postgres envio-hasura envio-indexer",
     "indexer:build": "pnpm --filter @fx-trader-profiles/indexer build",
-    "indexer:verify": "scripts/verify-envio-smoke.sh",
-    "contracts:verify": "node scripts/verify-fx-contracts.js"
+    "indexer:verify": "scripts/verify-envio-fx.sh",
+    "contracts:verify": "node scripts/verify-fx-contracts.js",
+    "indexer:reset": "docker compose --env-file .env -f docker-compose.yml -f docker-compose.indexer.yml run --rm --service-ports envio-indexer pnpm exec envio start -r"
   }
 }

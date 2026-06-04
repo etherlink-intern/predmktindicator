@@ -95,7 +95,7 @@ for container in fx-trader-profiles-envio-postgres fx-trader-profiles-envio-hasu
   exit_code="$(docker inspect -f '{{.State.ExitCode}}' "$container")"
   echo "$container: state=$state health=$health exit=$exit_code"
   if [ "$container" = "fx-trader-profiles-envio-indexer" ] && [ "$state" = "exited" ] && [ "$exit_code" = "0" ]; then
-    echo "OK  - bounded Envio smoke indexer completed successfully"
+    echo "OK  - bounded Envio f(x) indexer completed successfully"
     continue
   fi
   if [ "$state" != "running" ] || [ "$health" = "unhealthy" ]; then

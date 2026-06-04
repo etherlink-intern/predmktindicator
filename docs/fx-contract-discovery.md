@@ -6,7 +6,7 @@ Discovery date: 2026-06-04
 
 This document pins the f(x) Protocol contracts that are safe to use for the first real Envio indexing pass for the trader-profile product.
 
-The previous Envio scaffold indexed a bounded UNI ERC-20 smoke range only. This discovery pass replaces the unknown-contract blocker with a verified manifest, but it does not yet switch the indexer from smoke mode to f(x) indexing.
+The previous Envio scaffold indexed a bounded UNI ERC-20 smoke range only. This discovery pass replaced the unknown-contract blocker with a verified manifest, and the local Envio scaffold now uses a bounded f(x) deployment-window starter pass.
 
 ## Sources used
 
