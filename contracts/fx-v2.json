@@ -1,0 +1,343 @@
+{
+  "schemaVersion": 1,
+  "chain": {
+    "chainId": 1,
+    "name": "ethereum-mainnet"
+  },
+  "discoveryDate": "2026-06-04",
+  "scope": "f(x) Protocol v2/xPosition contracts relevant to trader-profile indexing. Legacy fToken/xToken market references are listed separately and are not active Envio targets yet.",
+  "sources": [
+    {
+      "type": "official-docs",
+      "url": "https://docs.aladdin.club/f-x-protocol/contracts",
+      "notes": "Official AladdinDAO f(x) contract tables."
+    },
+    {
+      "type": "official-repo",
+      "url": "https://github.com/AladdinDAO/fx-protocol-contracts",
+      "notes": "Ignition deployment JSON/journals and Solidity interfaces."
+    },
+    {
+      "type": "official-repo",
+      "url": "https://github.com/AladdinDAO/deployments/blob/main/deployments.mainnet.md",
+      "notes": "Official AladdinDAO mainnet deployment index linking f(x) v2 deployments."
+    },
+    {
+      "type": "rpc",
+      "url": "http://127.0.0.1:18545",
+      "notes": "Local RPC router used to verify non-empty code and deployment transaction receipt blocks where available."
+    }
+  ],
+  "activeIndexTargets": [
+    {
+      "name": "LongPoolManager",
+      "contractName": "PoolManager",
+      "category": "position-manager",
+      "side": "long",
+      "address": "0x250893CA4Ba5d05626C785e8da758026928FCD24",
+      "startBlock": 21529341,
+      "deploymentTransactionHash": "0xf091a88d5fc3e5ffea9111bb9fc4b4b6637e2df0715f116b2e96de95486d33b3",
+      "abiPath": "contracts/abis/IPoolManager.events.json",
+      "events": [
+        "RegisterPool",
+        "Operate",
+        "Redeem",
+        "RedeemForSettle",
+        "Harvest",
+        "ReduceDebt"
+      ],
+      "evidence": [
+        "fx-protocol-contracts/ignition/deployments/ethereum/deployed_addresses.json",
+        "fx-protocol-contracts/contracts/interfaces/IPoolManager.sol",
+        "eth_getCode non-empty",
+        "eth_getTransactionReceipt block 21529341"
+      ]
+    },
+    {
+      "name": "ShortPoolManager",
+      "contractName": "ShortPoolManager",
+      "category": "position-manager",
+      "side": "short",
+      "address": "0xaCDc0AB51178d0Ae8F70c1EAd7d3cF5421FDd66D",
+      "startBlock": 22953721,
+      "deploymentTransactionHash": "0xbeeeeac497dcdc5e9f772559f21d99de36486a498a75fc8fd1d7d5e3d1454870",
+      "abiPath": "contracts/abis/IShortPoolManager.events.json",
+      "events": [
+        "RegisterPool",
+        "Operate",
+        "Redeem",
+        "RedeemForSettle",
+        "Harvest",
+        "ReduceDebt",
+        "RebalanceTick",
+        "Rebalance",
+        "Liquidate",
+        "RedeemByCreditNote",
+        "KillPool",
+        "SettleKillPool"
+      ],
+      "evidence": [
+        "fx-protocol-contracts/ignition/deployments/upgrade-20250719/deployed_addresses.json",
+        "fx-protocol-contracts/contracts/interfaces/IShortPoolManager.sol",
+        "eth_getCode non-empty",
+        "eth_getTransactionReceipt block 22953721"
+      ]
+    },
+    {
+      "name": "WstETHLongPool",
+      "contractName": "AaveFundingPool",
+      "category": "position-pool",
+      "side": "long",
+      "collateral": "wstETH",
+      "address": "0x6Ecfa38FeE8a5277B91eFdA204c235814F0122E8",
+      "startBlock": 21529392,
+      "deploymentTransactionHash": "0x975da520126448e67a3671ba2454a631dea74a7f5b1a6aa6d4f76fb176b8daff",
+      "abiPath": "contracts/abis/IPool.events.json",
+      "events": [
+        "Transfer",
+        "PositionSnapshot",
+        "TickMovement",
+        "DebtIndexSnapshot",
+        "CollateralIndexSnapshot",
+        "UpdateDebtRatioRange",
+        "UpdateRebalanceRatios",
+        "UpdateLiquidateRatios"
+      ],
+      "evidence": [
+        "fx-protocol-contracts/ignition/deployments/ethereum/deployed_addresses.json",
+        "fx-protocol-contracts/contracts/interfaces/IPool.sol",
+        "eth_getCode non-empty",
+        "eth_getTransactionReceipt block 21529392"
+      ]
+    },
+    {
+      "name": "WBTCLongPool",
+      "contractName": "AaveFundingPool",
+      "category": "position-pool",
+      "side": "long",
+      "collateral": "WBTC",
+      "address": "0xAB709e26Fa6B0A30c119D8c55B887DeD24952473",
+      "startBlock": 22067306,
+      "deploymentTransactionHash": "0x5d79b917eabd0b2fc682bad589ea216a324439548e05623ea40489fae1b9a003",
+      "abiPath": "contracts/abis/IPool.events.json",
+      "events": [
+        "Transfer",
+        "PositionSnapshot",
+        "TickMovement",
+        "DebtIndexSnapshot",
+        "CollateralIndexSnapshot",
+        "UpdateDebtRatioRange",
+        "UpdateRebalanceRatios",
+        "UpdateLiquidateRatios"
+      ],
+      "evidence": [
+        "fx-protocol-contracts/ignition/deployments/upgrade-20250318/deployed_addresses.json",
+        "fx-protocol-contracts/contracts/interfaces/IPool.sol",
+        "eth_getCode non-empty",
+        "eth_getTransactionReceipt block 22067306"
+      ]
+    },
+    {
+      "name": "WstETHShortPool",
+      "contractName": "ShortPool",
+      "category": "position-pool",
+      "side": "short",
+      "collateral": "wstETH",
+      "address": "0x25707b9e6690B52C60aE6744d711cf9C1dFC1876",
+      "startBlock": 22953759,
+      "deploymentTransactionHash": "0x4a3a1768d6093d45bc0ea16e90da9c68b9b8734bcba412e4e08a2fbdccfd80f9",
+      "abiPath": "contracts/abis/IPool.events.json",
+      "events": [
+        "Transfer",
+        "PositionSnapshot",
+        "TickMovement",
+        "DebtIndexSnapshot",
+        "CollateralIndexSnapshot",
+        "UpdateDebtRatioRange",
+        "UpdateRebalanceRatios",
+        "UpdateLiquidateRatios"
+      ],
+      "evidence": [
+        "fx-protocol-contracts/ignition/deployments/upgrade-20250719/deployed_addresses.json",
+        "fx-protocol-contracts/contracts/interfaces/IPool.sol",
+        "eth_getCode non-empty",
+        "eth_getTransactionReceipt block 22953759"
+      ]
+    },
+    {
+      "name": "WBTCShortPool",
+      "contractName": "ShortPool",
+      "category": "position-pool",
+      "side": "short",
+      "collateral": "WBTC",
+      "address": "0xA0cC8162c523998856D59065fAa254F87D20A5b0",
+      "startBlock": 22995917,
+      "deploymentTransactionHash": "0x138690e7539ee504c1d886056209eee9ab466179d10ec08b5cafaa2f9ca1da8f",
+      "abiPath": "contracts/abis/IPool.events.json",
+      "events": [
+        "Transfer",
+        "PositionSnapshot",
+        "TickMovement",
+        "DebtIndexSnapshot",
+        "CollateralIndexSnapshot",
+        "UpdateDebtRatioRange",
+        "UpdateRebalanceRatios",
+        "UpdateLiquidateRatios"
+      ],
+      "evidence": [
+        "fx-protocol-contracts/ignition/deployments/upgrade-20250725/deployed_addresses.json",
+        "fx-protocol-contracts/contracts/interfaces/IPool.sol",
+        "eth_getCode non-empty",
+        "eth_getTransactionReceipt block 22995917"
+      ]
+    },
+    {
+      "name": "RouterDiamond",
+      "contractName": "Diamond",
+      "category": "router",
+      "side": "long",
+      "notes": "Legacy/current diamond router emits delegated facet events at the diamond address.",
+      "address": "0x33636D49FbefBE798e15e7F356E8DBef543CC708",
+      "startBlock": 21529417,
+      "deploymentTransactionHash": "0xd81e5c30ba02fd711c0954d6e4f8ef667ffc5d96d869793192a952602a24d204",
+      "abiPath": "contracts/abis/PositionOperateFacet.events.json",
+      "events": [
+        "Operate",
+        "OpenOrAdd",
+        "CloseOrRemove"
+      ],
+      "evidence": [
+        "fx-protocol-contracts/ignition/deployments/ethereum/deployed_addresses.json",
+        "fx-protocol-contracts/contracts/periphery/facets/PositionOperateFacet.sol",
+        "fx-protocol-contracts/contracts/periphery/facets/PositionOperateFlashLoanFacetV2.sol",
+        "eth_getCode non-empty",
+        "eth_getTransactionReceipt block 21529417"
+      ]
+    },
+    {
+      "name": "FxMintRouter",
+      "contractName": "Diamond",
+      "category": "router",
+      "notes": "Router deployed by upgrade-20251030; likely current mint/position route target.",
+      "address": "0xB753366082466c4B5984312f0c4Bb97554be067E",
+      "startBlock": 23687207,
+      "deploymentTransactionHash": "0x503b6f5f43e8f36a04f0198f4bd12a30e188c7f367ce7d69be5ef933b5b2fdb4",
+      "abiPath": "contracts/abis/PositionOperateFacet.events.json",
+      "events": [
+        "Operate"
+      ],
+      "evidence": [
+        "fx-protocol-contracts/ignition/deployments/upgrade-20251030/deployed_addresses.json",
+        "fx-protocol-contracts/contracts/periphery/facets/PositionOperateFacet.sol",
+        "eth_getCode non-empty",
+        "eth_getTransactionReceipt block 23687207"
+      ]
+    },
+    {
+      "name": "LimitOrderManager",
+      "contractName": "LimitOrderManager",
+      "category": "limit-order",
+      "address": "0x112873b395B98287F3A4db266a58e2D01779Ad96",
+      "startBlock": 23576162,
+      "deploymentTransactionHash": "0x4f6ac7676b688cfd9a519ae1abd5635c999e89845663905f671534dfe7cac7d8",
+      "abiPath": "contracts/abis/ILimitOrderManager.events.json",
+      "events": [
+        "AdvanceNonce",
+        "CancelOrder",
+        "FillOrder"
+      ],
+      "evidence": [
+        "fx-protocol-contracts/ignition/deployments/upgrade-20251014/deployed_addresses.json",
+        "fx-protocol-contracts/contracts/limit-order/ILimitOrderManager.sol",
+        "eth_getCode non-empty",
+        "eth_getTransactionReceipt block 23576162"
+      ]
+    },
+    {
+      "name": "FxUSDBasePool",
+      "contractName": "FxUSDBasePool",
+      "category": "stable-base-pool",
+      "address": "0x65C9A641afCEB9C0E6034e558A319488FA0FA3be",
+      "startBlock": 21529341,
+      "deploymentTransactionHash": "0x9e2cd48ec0aa3fdc448c7d8ec0ea058dace66889e2d034a8fcb45fd038a28f16",
+      "abiPath": "contracts/abis/IFxUSDBasePool.events.json",
+      "events": [
+        "Deposit",
+        "RequestRedeem",
+        "Redeem",
+        "InstantRedeem",
+        "Rebalance",
+        "Arbitrage"
+      ],
+      "evidence": [
+        "fx-protocol-contracts/ignition/deployments/ethereum/deployed_addresses.json",
+        "fx-protocol-contracts/contracts/interfaces/IFxUSDBasePool.sol",
+        "eth_getCode non-empty",
+        "eth_getTransactionReceipt block 21529341"
+      ]
+    },
+    {
+      "name": "PoolConfiguration",
+      "contractName": "PoolConfiguration",
+      "category": "configuration",
+      "address": "0x16b334f2644cc00b85DB1A1efF0C2C395e00C28d",
+      "startBlock": 22953677,
+      "deploymentTransactionHash": "0x29a17ae810ae54a746afe50a87fc9145085552eb8daf991f9547d20252d0d587",
+      "abiPath": "contracts/abis/IPoolConfiguration.events.json",
+      "events": [
+        "Register",
+        "Snapshot",
+        "UpdatePoolFeeRatio",
+        "UpdateLongFundingRatioParameter",
+        "UpdateShortFundingRatioParameter"
+      ],
+      "evidence": [
+        "fx-protocol-contracts/ignition/deployments/upgrade-20250719/deployed_addresses.json",
+        "fx-protocol-contracts/contracts/interfaces/IPoolConfiguration.sol",
+        "eth_getCode non-empty",
+        "eth_getTransactionReceipt block 22953677"
+      ]
+    }
+  ],
+  "legacyMarketReferences": [
+    {
+      "name": "WstETHMarket",
+      "address": "0xAD9A0E7C08bc9F747dF97a3E7E7f620632CB6155",
+      "docsName": "fstETH/xstETH Market",
+      "source": "official docs + ignition Migration#WstETHMarketProxy",
+      "status": "reference-only"
+    },
+    {
+      "name": "SfrxETHMarket",
+      "address": "0x714B853b3bA73E439c652CfE79660F329E6ebB42",
+      "docsName": "ffrxETH/xfrxETH Market",
+      "source": "official docs + ignition Migration#SfrxETHMarketProxy",
+      "status": "reference-only"
+    },
+    {
+      "name": "fETH",
+      "address": "0x53805A76E1f5ebbFE7115F16f9c87C2f7e633726",
+      "source": "official docs",
+      "status": "reference-only"
+    },
+    {
+      "name": "xETH",
+      "address": "0xe063F04f280c60aECa68b38341C2eEcBeC703ae2",
+      "source": "official docs",
+      "status": "reference-only"
+    },
+    {
+      "name": "FXN",
+      "address": "0x365AccFCa291e7D3914637ABf1F7635dB165Bb09",
+      "source": "official docs / Etherscan search",
+      "status": "reference-only"
+    }
+  ],
+  "excludedCandidates": [
+    {
+      "address": "0xbd216513d74c8cf14cf4747e6aaa6420ff64ee9e",
+      "label": "Etherscan search result: PositionManager",
+      "reason": "Not present in official AladdinDAO deployment docs or fx-protocol-contracts repo search; excluded until independently tied to f(x)."
+    }
+  ]
+}

@@ -1,0 +1,108 @@
+[
+  {
+    "type": "event",
+    "name": "Operate",
+    "inputs": [
+      {
+        "name": "pool",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "user",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "positionId",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "deltaColls",
+        "type": "int256",
+        "indexed": false
+      },
+      {
+        "name": "deltaDebts",
+        "type": "int256",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "OpenOrAdd",
+    "inputs": [
+      {
+        "name": "pool",
+        "type": "address",
+        "indexed": false
+      },
+      {
+        "name": "position",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "recipient",
+        "type": "address",
+        "indexed": false
+      },
+      {
+        "name": "colls",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "debts",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "borrows",
+        "type": "uint256",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "CloseOrRemove",
+    "inputs": [
+      {
+        "name": "pool",
+        "type": "address",
+        "indexed": false
+      },
+      {
+        "name": "position",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "recipient",
+        "type": "address",
+        "indexed": false
+      },
+      {
+        "name": "colls",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "debts",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "borrows",
+        "type": "uint256",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  }
+]

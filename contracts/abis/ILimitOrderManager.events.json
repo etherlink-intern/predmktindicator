@@ -1,0 +1,88 @@
+[
+  {
+    "type": "event",
+    "name": "AdvanceNonce",
+    "inputs": [
+      {
+        "name": "maker",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "nonce",
+        "type": "uint256",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "CancelOrder",
+    "inputs": [
+      {
+        "name": "orderHash",
+        "type": "bytes32",
+        "indexed": true
+      },
+      {
+        "name": "maker",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "pool",
+        "type": "address",
+        "indexed": false
+      },
+      {
+        "name": "positionId",
+        "type": "uint256",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "FillOrder",
+    "inputs": [
+      {
+        "name": "orderHash",
+        "type": "bytes32",
+        "indexed": true
+      },
+      {
+        "name": "maker",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "taker",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "pool",
+        "type": "address",
+        "indexed": false
+      },
+      {
+        "name": "positionId",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "makingAmount",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "takingAmount",
+        "type": "uint256",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  }
+]

@@ -1,0 +1,122 @@
+[
+  {
+    "type": "event",
+    "name": "Register",
+    "inputs": [
+      {
+        "name": "key",
+        "type": "bytes32",
+        "indexed": false
+      },
+      {
+        "name": "addr",
+        "type": "address",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "Snapshot",
+    "inputs": [
+      {
+        "name": "borrowIndex",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "lastInterestRate",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "timestamp",
+        "type": "uint256",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "UpdatePoolFeeRatio",
+    "inputs": [
+      {
+        "name": "pool",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "recipient",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "supplyRatio",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "supplyRatioStep",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "withdrawFeeRatio",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "borrowFeeRatio",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "repayFeeRatio",
+        "type": "uint256",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "UpdateLongFundingRatioParameter",
+    "inputs": [
+      {
+        "name": "scalarA",
+        "type": "uint64",
+        "indexed": false
+      },
+      {
+        "name": "scalarB",
+        "type": "uint64",
+        "indexed": false
+      },
+      {
+        "name": "maxFxUSDRatio",
+        "type": "uint64",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "UpdateShortFundingRatioParameter",
+    "inputs": [
+      {
+        "name": "scalarC",
+        "type": "uint64",
+        "indexed": false
+      },
+      {
+        "name": "maxBorrowRatio",
+        "type": "uint64",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  }
+]

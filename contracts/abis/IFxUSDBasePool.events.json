@@ -1,0 +1,189 @@
+[
+  {
+    "type": "event",
+    "name": "Deposit",
+    "inputs": [
+      {
+        "name": "caller",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "receiver",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "tokenIn",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "amountDeposited",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "amountSharesOut",
+        "type": "uint256",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "RequestRedeem",
+    "inputs": [
+      {
+        "name": "caller",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "shares",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "unlockAt",
+        "type": "uint256",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "Redeem",
+    "inputs": [
+      {
+        "name": "caller",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "receiver",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "amountSharesToRedeem",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "amountYieldTokenOut",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "amountStableTokenOut",
+        "type": "uint256",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "InstantRedeem",
+    "inputs": [
+      {
+        "name": "caller",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "receiver",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "amountSharesToRedeem",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "amountYieldTokenOut",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "amountStableTokenOut",
+        "type": "uint256",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "Rebalance",
+    "inputs": [
+      {
+        "name": "caller",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "tokenIn",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "amountTokenIn",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "amountCollateral",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "amountYieldToken",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "amountStableToken",
+        "type": "uint256",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "Arbitrage",
+    "inputs": [
+      {
+        "name": "caller",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "tokenIn",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "amountIn",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "amountOut",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "bonusOut",
+        "type": "uint256",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  }
+]

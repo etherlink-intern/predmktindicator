@@ -1,0 +1,163 @@
+[
+  {
+    "type": "event",
+    "name": "Transfer",
+    "inputs": [
+      {
+        "name": "from",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "to",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "tokenId",
+        "type": "uint256",
+        "indexed": true
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "PositionSnapshot",
+    "inputs": [
+      {
+        "name": "position",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "tick",
+        "type": "int16",
+        "indexed": false
+      },
+      {
+        "name": "collShares",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "debtShares",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "price",
+        "type": "uint256",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "TickMovement",
+    "inputs": [
+      {
+        "name": "oldTick",
+        "type": "int16",
+        "indexed": false
+      },
+      {
+        "name": "newTick",
+        "type": "int16",
+        "indexed": false
+      },
+      {
+        "name": "collShares",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "debtShares",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "price",
+        "type": "uint256",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "DebtIndexSnapshot",
+    "inputs": [
+      {
+        "name": "index",
+        "type": "uint256",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "CollateralIndexSnapshot",
+    "inputs": [
+      {
+        "name": "index",
+        "type": "uint256",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "UpdateDebtRatioRange",
+    "inputs": [
+      {
+        "name": "minDebtRatio",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "maxDebtRatio",
+        "type": "uint256",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "UpdateRebalanceRatios",
+    "inputs": [
+      {
+        "name": "debtRatio",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "bonusRatio",
+        "type": "uint256",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "UpdateLiquidateRatios",
+    "inputs": [
+      {
+        "name": "debtRatio",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "bonusRatio",
+        "type": "uint256",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  }
+]

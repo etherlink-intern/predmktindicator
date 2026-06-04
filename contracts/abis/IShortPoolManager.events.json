@@ -1,0 +1,291 @@
+[
+  {
+    "type": "event",
+    "name": "RegisterPool",
+    "inputs": [
+      {
+        "name": "pool",
+        "type": "address",
+        "indexed": true
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "Operate",
+    "inputs": [
+      {
+        "name": "pool",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "position",
+        "type": "uint256",
+        "indexed": true
+      },
+      {
+        "name": "deltaColls",
+        "type": "int256",
+        "indexed": false
+      },
+      {
+        "name": "deltaDebts",
+        "type": "int256",
+        "indexed": false
+      },
+      {
+        "name": "protocolFees",
+        "type": "uint256",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "Redeem",
+    "inputs": [
+      {
+        "name": "pool",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "colls",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "debts",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "protocolFees",
+        "type": "uint256",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "RedeemForSettle",
+    "inputs": [
+      {
+        "name": "pool",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "colls",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "debts",
+        "type": "uint256",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "Harvest",
+    "inputs": [
+      {
+        "name": "caller",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "pool",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "amountRewards",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "amountFunding",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "performanceFee",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "harvestBounty",
+        "type": "uint256",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "ReduceDebt",
+    "inputs": [
+      {
+        "name": "pool",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "RebalanceTick",
+    "inputs": [
+      {
+        "name": "pool",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "tick",
+        "type": "int16",
+        "indexed": true
+      },
+      {
+        "name": "colls",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "debts",
+        "type": "uint256",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "Rebalance",
+    "inputs": [
+      {
+        "name": "pool",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "colls",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "debts",
+        "type": "uint256",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "Liquidate",
+    "inputs": [
+      {
+        "name": "pool",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "colls",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "debts",
+        "type": "uint256",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "RedeemByCreditNote",
+    "inputs": [
+      {
+        "name": "pool",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "colls",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "debts",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "protocolFees",
+        "type": "uint256",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "KillPool",
+    "inputs": [
+      {
+        "name": "pool",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "rawColls",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "debts",
+        "type": "uint256",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "SettleKillPool",
+    "inputs": [
+      {
+        "name": "pool",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "colls",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "debts",
+        "type": "uint256",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  }
+]

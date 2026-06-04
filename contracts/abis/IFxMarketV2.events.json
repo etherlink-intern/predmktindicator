@@ -1,0 +1,140 @@
+[
+  {
+    "type": "event",
+    "name": "MintFToken",
+    "inputs": [
+      {
+        "name": "owner",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "recipient",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "baseTokenIn",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "fTokenOut",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "mintFee",
+        "type": "uint256",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "MintXToken",
+    "inputs": [
+      {
+        "name": "owner",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "recipient",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "baseTokenIn",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "xTokenOut",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "bonus",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "mintFee",
+        "type": "uint256",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "RedeemFToken",
+    "inputs": [
+      {
+        "name": "owner",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "recipient",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "fTokenBurned",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "baseTokenOut",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "bonus",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "redeemFee",
+        "type": "uint256",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "RedeemXToken",
+    "inputs": [
+      {
+        "name": "owner",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "recipient",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "xTokenBurned",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "baseTokenOut",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "redeemFee",
+        "type": "uint256",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  }
+]
