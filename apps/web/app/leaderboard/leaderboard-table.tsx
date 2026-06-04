@@ -13,7 +13,9 @@ type SortKey =
   | "btcNetExposureUsd"
   | "pools"
   | "unrealizedPnlUsd"
-  | "totalPnlUsd";
+  | "totalPnlUsd"
+  | "feesUsd";
+
 type SortDirection = "asc" | "desc";
 
 type LeaderboardTableProps = {
@@ -26,6 +28,7 @@ const columns: Array<{ key: SortKey; label: string; align?: "right" }> = [
   { key: "equityUsd", label: "Current equity", align: "right" },
   { key: "unrealizedPnlUsd", label: "Unrealized PnL", align: "right" },
   { key: "totalPnlUsd", label: "Total PnL", align: "right" },
+  { key: "feesUsd", label: "Fees paid", align: "right" },
   { key: "debtValueUsd", label: "Debt value", align: "right" },
   { key: "maxDebtRatio", label: "Max debt ratio", align: "right" },
   { key: "ethNetExposureUsd", label: "Net ETH", align: "right" },
@@ -191,6 +194,7 @@ export function LeaderboardTable({ traders }: LeaderboardTableProps) {
                   <td className="numeric">{formatUsd(trader.equityUsd)}</td>
                   <td className="numeric">{trader.hasPositionHistory ? formatUsd(trader.unrealizedPnlUsd) : "—"}</td>
                   <td className="numeric">{trader.hasPositionHistory ? formatUsd(trader.totalPnlUsd) : "—"}</td>
+                  <td className="numeric">{formatUsd(trader.feesUsd)}</td>
                   <td className="numeric">{formatUsd(trader.debtValueUsd)}</td>
                   <td className="numeric">
                     <span className={riskTone(trader.maxDebtRatio)}>

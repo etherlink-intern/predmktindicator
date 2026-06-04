@@ -19,8 +19,8 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           </nav>
           {children}
           <footer style={{
-            marginTop: "64px",
-            paddingTop: "24px",
+            marginTop: "36px",
+            paddingTop: "14px",
             borderTop: "1px solid rgba(148, 163, 184, 0.16)",
             textAlign: "center",
             color: "var(--muted)",

@@ -26,7 +26,7 @@ function ExposureBar({
   const netColor = net > 0 ? "#22c55e" : net < 0 ? "#ef4444" : "#94a3b8";
 
   return (
-    <div style={{ marginTop: "16px" }}>
+    <div style={{ marginTop: "10px" }}>
       <div
         style={{
           display: "flex",
@@ -187,7 +187,7 @@ export default async function HomePage() {
         </div>
       </div>
 
-      <article className="card" style={{ padding: "20px 24px" }}>
+      <article className="card" style={{ padding: "12px 14px" }}>
         <ExposureBar
           label="ETH / wstETH"
           longUsd={ethLong}

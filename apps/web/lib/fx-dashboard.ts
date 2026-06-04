@@ -43,6 +43,7 @@ export type TraderSummary = {
   maxDebtRatio: number;
   unrealizedPnlUsd: number;
   totalPnlUsd: number;
+  feesUsd: number;
   hasPositionHistory: boolean;
 };
 
@@ -185,6 +186,7 @@ function mapTrader(row: Record<string, unknown>): TraderSummary {
     maxDebtRatio: toNumber(row.maxDebtRatio),
     unrealizedPnlUsd: toNumber(row.unrealizedPnlUsd),
     totalPnlUsd: toNumber(row.totalPnlUsd),
+    feesUsd: toNumber(row.feesUsd),
     hasPositionHistory: Boolean(row.hasPositionHistory)
   };
 }
@@ -258,6 +260,7 @@ const traderSelect = `
         else 0
       end
     ), 0)::float8 + coalesce(sum(realized_pnl_raw * oracle_price / 1000000000000000000), 0)::float8 as "totalPnlUsd",
+    coalesce(sum(total_fees_raw * oracle_price / 1000000000000000000), 0)::float8 as "feesUsd",
     coalesce(bool_or(entry_price_raw is not null and entry_price_raw > 0), false) or coalesce(bool_or(realized_pnl_raw != 0), false) as "hasPositionHistory"
   from public.fx_current_positions
 `;
