@@ -476,7 +476,7 @@ async function syncSnapshots(client: Client, table: string | null) {
 }
 
 const OFFICIAL_POSITION_QUERY = `
-  query Positions($ids: [String!]!) {
+  query Positions($ids: [String!]!, $skip: Int!) {
     positions(first: 1000, where: { id_in: $ids }, orderBy: blockNumber, orderDirection: asc) {
       timestamp
       price
@@ -489,28 +489,7 @@ const OFFICIAL_POSITION_QUERY = `
       colls
       blockNumber
       targetLeverage
-      orders(first: 1000, orderBy: blockNumber, orderDirection: asc) {
-        deltaColls
-        deltaDebts
-        execPrice
-        id
-        logIndex
-        positionColls
-        positionDebts
-        oldPositionColls
-        oldPositionDebts
-        price
-        priceRate
-        protocolFees
-        type
-        hash
-        timestamp
-        blockNumber
-        positionCollIndex
-        positionDebtIndex
-        tickMovement { price type typeLogIndex }
-      }
-      latestOrders: orders(first: 1000, orderBy: blockNumber, orderDirection: desc) {
+      orders(first: 1000, skip: $skip, orderBy: blockNumber, orderDirection: asc) {
         deltaColls
         deltaDebts
         execPrice
@@ -537,19 +516,37 @@ const OFFICIAL_POSITION_QUERY = `
 
 async function fetchOfficialPositions(pool: OfficialPoolConfig, ids: string[]): Promise<OfficialPosition[]> {
   if (ids.length === 0) return [];
-  const response = await fetch(pool.endpoint, {
-    method: "POST",
-    headers: { "content-type": "application/json", "user-agent": "fx-trader-profiles/official-order-sync" },
-    body: JSON.stringify({ query: OFFICIAL_POSITION_QUERY, variables: { ids } }),
-  });
-  const payload = (await response.json().catch(() => ({}))) as {
-    data?: { positions?: OfficialPosition[] };
-    errors?: { message?: string }[];
-  };
-  if (!response.ok || payload.errors?.length) {
-    throw new Error(`Official f(x) subgraph failed for ${pool.key}: ${payload.errors?.[0]?.message ?? response.statusText}`);
+  const positionsById = new Map<string, OfficialPosition>();
+
+  for (let skip = 0; ; skip += 1000) {
+    const response = await fetch(pool.endpoint, {
+      method: "POST",
+      headers: { "content-type": "application/json", "user-agent": "fx-trader-profiles/official-order-sync" },
+      body: JSON.stringify({ query: OFFICIAL_POSITION_QUERY, variables: { ids, skip } }),
+    });
+    const payload = (await response.json().catch(() => ({}))) as {
+      data?: { positions?: OfficialPosition[] };
+      errors?: { message?: string }[];
+    };
+    if (!response.ok || payload.errors?.length) {
+      throw new Error(`Official f(x) subgraph failed for ${pool.key}: ${payload.errors?.[0]?.message ?? response.statusText}`);
+    }
+
+    const pagePositions = payload.data?.positions ?? [];
+    if (pagePositions.length === 0) break;
+
+    let pageWasFull = false;
+    for (const position of pagePositions) {
+      const existing = positionsById.get(position.id);
+      const mergedOrders = [...(existing?.orders ?? []), ...(position.orders ?? [])];
+      positionsById.set(position.id, { ...position, orders: mergedOrders });
+      if ((position.orders?.length ?? 0) === 1000) pageWasFull = true;
+    }
+
+    if (!pageWasFull) break;
   }
-  return payload.data?.positions ?? [];
+
+  return [...positionsById.values()];
 }
 
 async function syncOfficialFxOrders(client: Client) {
@@ -571,10 +568,6 @@ async function syncOfficialFxOrders(client: Client) {
   for (const pool of OFFICIAL_POOLS) {
     const currentIds = await client.query<{ token_id: string }>(
       `with candidate_ids as (
-         select token_id::numeric as token_id
-         from public.fx_current_positions
-         where lower(pool_address) = $1
-         union
          select distinct position_id as token_id
          from public.fx_position_cashflows
          where lower(pool_address) = $1
