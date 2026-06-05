@@ -39,12 +39,22 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       <body>
         <main className="shell">
           <nav className="nav" aria-label="Primary navigation">
-            <a href="/">Home</a>
-            <a href="/leaderboard">Leaderboard</a>
-            <a href="/top-traders">Top Traders</a>
+            <a href="/">Dashboard</a>
+            <a href="/positions">Positions</a>
+            <a href="/top-traders">Traders</a>
+            <a href="/research">Research</a>
             <a href="/methodology">Methodology</a>
             <a href="/privacy">Privacy</a>
             <span className="nav-spacer" />
+            <a
+              className="nav-cta"
+              href="https://fx.aladdin.club/v2/trade/?code=kitsune"
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Trade on f(x) Protocol via Aladdin"
+            >
+              Trade on f(x) ↗
+            </a>
             <a
               className="nav-external"
               href="https://fxprotocolstats.com"

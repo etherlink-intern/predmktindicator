@@ -93,6 +93,8 @@ export type HistoricalPosition = {
   cashflowEventCount: number;
   firstBlock: number;
   lastBlock: number;
+  firstAt: string | null;
+  lastAt: string | null;
   isOpen: boolean;
 };
 
@@ -878,12 +880,92 @@ export async function getTraderProfile(address: string): Promise<TraderProfile |
       if (!(await hasCurrentPositionsTable(client))) {
         return null;
       }
-      const [generatedAt, summaryResult, positionsResult, historyResult, fundingActivityResult] = await Promise.all([
+      const [generatedAt, summaryResult, closedSummaryResult, positionsResult, historyResult, fundingActivityResult] = await Promise.all([
         latestSnapshotTime(client),
         client.query<Record<string, unknown>>(
           `${traderSelect}
            where lower(public.fx_current_positions.owner) = $1
            group by public.fx_current_positions.owner
+           limit 1`,
+          [normalized]
+        ),
+        client.query<Record<string, unknown>>(
+          `with pool_meta as (
+             select distinct on (lower(pool_address))
+               lower(pool_address) as pool_address,
+               oracle_price
+             from public.fx_current_positions
+             where oracle_price is not null and oracle_price > 0
+             order by lower(pool_address), updated_at desc nulls last
+           ), pool_side as (
+             select distinct on (lower(pool_address))
+               lower(pool_address) as pool_address,
+               pool_name,
+               side,
+               collateral
+             from public.fx_current_positions
+             order by lower(pool_address), updated_at desc nulls last
+           ), pnl_owner_positions as (
+             select distinct lower(owner) as owner, lower(pool_address) as pool_address, position_id
+             from public.fx_official_positions
+             where owner is not null
+             union
+             select distinct lower(real_owner) as owner, lower(pool_address) as pool_address, position_id
+             from public.fx_official_positions
+             where real_owner is not null
+             union
+             select distinct lower(user_address) as owner, lower(pool_address) as pool_address, position_id
+             from public.fx_position_cashflows
+             where user_address is not null and position_id is not null
+             union
+             select distinct lower(recipient_address) as owner, lower(pool_address) as pool_address, position_id
+             from public.fx_position_cashflows
+             where recipient_address is not null and position_id is not null
+           )
+           select
+             op.owner,
+             0::int as positions,
+             0::int as pools,
+             0::int as "wstethLong",
+             0::int as "wbtcLong",
+             0::int as "wstethShort",
+             0::int as "wbtcShort",
+             0::float8 as "ethLongExposureUsd",
+             0::float8 as "ethShortExposureUsd",
+             0::float8 as "ethNetExposureUsd",
+             0::float8 as "btcLongExposureUsd",
+             0::float8 as "btcShortExposureUsd",
+             0::float8 as "btcNetExposureUsd",
+             0::float8 as "notionalValueUsd",
+             0::float8 as "collateralValueUsd",
+             0::float8 as "debtValueUsd",
+             0::float8 as "equityUsd",
+             0::float8 as "avgDebtRatio",
+             0::float8 as "maxDebtRatio",
+             0::float8 as "unrealizedPnlUsd",
+             coalesce(sum(
+               case
+                 when coalesce(po.side, ps.side, 'long') = 'short' then pp.realized_pnl_raw / 1000000000000000000
+                 when coalesce(po.collateral, ps.collateral) = 'WBTC' then pp.realized_pnl_raw * coalesce(pm.oracle_price, 0) / 100000000
+                 else pp.realized_pnl_raw * coalesce(pm.oracle_price, 0) / 1000000000000000000
+               end
+             ), 0)::float8 as "totalPnlUsd",
+             coalesce(sum(pp.total_fees_raw / 1000000000000000000), 0)::float8 as "feesUsd",
+             0::float8 as "fundingWindowFeesUsd",
+             0::int as "fundingWindowFeeEvents",
+             0::int as "fundingWindowFeePositions",
+             true as "hasPositionHistory"
+           from pnl_owner_positions op
+           join public.fx_position_pnl pp
+             on lower(pp.pool_address) = op.pool_address
+             and pp.position_id = op.position_id
+           left join public.fx_official_positions po
+             on lower(po.pool_address) = lower(pp.pool_address)
+             and po.position_id = pp.position_id
+           left join pool_side ps on ps.pool_address = lower(pp.pool_address)
+           left join pool_meta pm on pm.pool_address = lower(pp.pool_address)
+           where op.owner = $1
+           group by op.owner
            limit 1`,
           [normalized]
         ),
@@ -936,10 +1018,23 @@ export async function getTraderProfile(address: string): Promise<TraderProfile |
         ),
         client.query<Record<string, unknown>>(
           `with trader_cashflows as (
-             select distinct pool_address, position_id
+             select distinct c.pool_address, c.position_id
+             from public.fx_position_cashflows c
+             left join public.fx_official_positions o
+               on lower(o.pool_address) = lower(c.pool_address)
+               and o.position_id = c.position_id
+             where c.position_id is not null
+               and (
+                 lower(c.user_address) = $1
+                 or lower(c.recipient_address) = $1
+                 or lower(o.owner) = $1
+                 or lower(o.real_owner) = $1
+               )
+           ), event_times as (
+             select lower(pool_address) as pool_address, position_id, min(block_timestamp) as first_at, max(block_timestamp) as last_at
              from public.fx_position_cashflows
-             where (lower(user_address) = $1 or lower(recipient_address) = $1)
-               and position_id is not null
+             where block_timestamp is not null
+             group by lower(pool_address), position_id
            ), pool_meta as (
              select distinct on (lower(pool_address))
                lower(pool_address) as pool_address,
@@ -952,28 +1047,34 @@ export async function getTraderProfile(address: string): Promise<TraderProfile |
            )
            select
              lower(h.pool_address) as "poolAddress",
-             coalesce(p.pool_name, m.pool_name, h.pool_address) as "poolName",
-             coalesce(p.side, m.side, 'unknown') as "side",
+             coalesce(p.pool_name, o.pool_name, m.pool_name, h.pool_address) as "poolName",
+             coalesce(p.side, o.side, m.side, 'unknown') as "side",
              h.position_id::text as "tokenId",
              coalesce(
                h.total_fees_raw / 1000000000000000000,
              0)::float8 as "feesUsd",
              h.cashflow_event_count as "cashflowEventCount",
              coalesce(
-               case when coalesce(p.side, m.side, 'long') = 'short'
+               case when coalesce(p.side, o.side, m.side, 'long') = 'short'
                  then h.realized_pnl_raw / 1000000000000000000
-                 when coalesce(p.collateral, m.collateral) = 'WBTC'
+                 when coalesce(p.collateral, o.collateral, m.collateral) = 'WBTC'
                  then h.realized_pnl_raw * coalesce(p.oracle_price, m.oracle_price, 0) / 100000000
                  else h.realized_pnl_raw * coalesce(p.oracle_price, m.oracle_price, 0) / 1000000000000000000
                end,
              0)::float8 as "realizedPnlUsd",
              h.first_cashflow_block as "firstBlock",
              h.last_cashflow_block as "lastBlock",
+             et.first_at as "firstAt",
+             et.last_at as "lastAt",
              p.token_id is not null as "isOpen"
            from public.fx_position_pnl h
            join trader_cashflows tc on lower(tc.pool_address) = lower(h.pool_address) and tc.position_id = h.position_id
            left join public.fx_current_positions p
              on lower(p.pool_address) = lower(h.pool_address) and p.token_id = h.position_id
+           left join public.fx_official_positions o
+             on lower(o.pool_address) = lower(h.pool_address) and o.position_id = h.position_id
+           left join event_times et
+             on et.pool_address = lower(h.pool_address) and et.position_id = h.position_id
            left join pool_meta m
              on m.pool_address = lower(h.pool_address)
            order by h.last_cashflow_block desc nulls last`,
@@ -1016,7 +1117,7 @@ export async function getTraderProfile(address: string): Promise<TraderProfile |
         )
       ]);
 
-      const summary = summaryResult.rows[0];
+      const summary = summaryResult.rows[0] ?? closedSummaryResult.rows[0];
       if (!summary) return null;
       return {
         owner: String(summary.owner),
@@ -1033,6 +1134,8 @@ export async function getTraderProfile(address: string): Promise<TraderProfile |
           cashflowEventCount: Number(row.cashflowEventCount),
           firstBlock: Number(row.firstBlock),
           lastBlock: Number(row.lastBlock),
+          firstAt: row.firstAt instanceof Date ? row.firstAt.toISOString() : null,
+          lastAt: row.lastAt instanceof Date ? row.lastAt.toISOString() : null,
           isOpen: Boolean(row.isOpen),
         })),
         fundingFeeActivity: fundingActivityResult.rows.map((row) => ({
@@ -1130,6 +1233,8 @@ export async function getTopTraders(): Promise<TopTrader[]> {
           ) as notional_usd,
           coalesce(sum(
             case
+              when side = 'short' and ui_unrealized_pnl_usd is not null
+                then ui_unrealized_pnl_usd
               when side = 'long' and entry_price_raw is not null and entry_price_raw > 0
                 then collateral_value_usd * (oracle_price * 1000000000000000000 / entry_price_raw - 1)
               when side = 'short' and entry_price_raw is not null and entry_price_raw > 0
@@ -1142,21 +1247,62 @@ export async function getTopTraders(): Promise<TopTrader[]> {
           max(debt_ratio) as max_debt_ratio,
           coalesce(sum(equity_usd), 0) as equity_usd
         from public.fx_current_positions
-        where entry_price_raw is not null
+        where owner is not null
         group by lower(owner)
+      ),
+      pool_meta as (
+        select distinct on (lower(pool_address))
+          lower(pool_address) as pool_address,
+          oracle_price
+        from public.fx_current_positions
+        where oracle_price is not null and oracle_price > 0
+        order by lower(pool_address), updated_at desc nulls last
+      ),
+      pnl_owner_positions as (
+        select distinct lower(owner) as owner, lower(pool_address) as pool_address, position_id
+        from public.fx_official_positions
+        where owner is not null
+        union
+        select distinct lower(real_owner) as owner, lower(pool_address) as pool_address, position_id
+        from public.fx_official_positions
+        where real_owner is not null
+        union
+        select distinct lower(user_address) as owner, lower(pool_address) as pool_address, position_id
+        from public.fx_position_cashflows
+        where user_address is not null and position_id is not null
+        union
+        select distinct lower(recipient_address) as owner, lower(pool_address) as pool_address, position_id
+        from public.fx_position_cashflows
+        where recipient_address is not null and position_id is not null
       ),
       closed_trader as (
         select
-          lower(po.owner) as owner,
-          coalesce(sum(pp.realized_pnl_raw), 0) as realized_pnl_raw,
+          op.owner,
+          coalesce(sum(
+            case
+              when coalesce(po.side, pm_side.side, 'long') = 'short' then pp.realized_pnl_raw / 1000000000000000000
+              when coalesce(po.collateral, pm_side.collateral) = 'WBTC' then pp.realized_pnl_raw * coalesce(pm.oracle_price, 0) / 100000000
+              else pp.realized_pnl_raw * coalesce(pm.oracle_price, 0) / 1000000000000000000
+            end
+          ), 0) as realized_pnl_usd,
           coalesce(sum(pp.total_fees_raw), 0) as total_fees_raw,
           count(*)::int as closed_positions,
           count(*) filter (where pp.realized_pnl_raw > 0)::int as winning_positions
-        from public.fx_position_pnl pp
-        join public.fx_official_positions po
+        from pnl_owner_positions op
+        join public.fx_position_pnl pp
+          on lower(pp.pool_address) = op.pool_address
+          and pp.position_id = op.position_id
+        left join public.fx_official_positions po
           on lower(po.pool_address) = lower(pp.pool_address)
           and po.position_id = pp.position_id
-        group by lower(po.owner)
+        left join (
+          select distinct on (lower(pool_address))
+            lower(pool_address) as pool_address, side, collateral
+          from public.fx_current_positions
+          order by lower(pool_address), updated_at desc nulls last
+        ) pm_side on pm_side.pool_address = lower(pp.pool_address)
+        left join pool_meta pm on pm.pool_address = lower(pp.pool_address)
+        group by op.owner
       ),
       combined as (
         select
@@ -1165,7 +1311,7 @@ export async function getTopTraders(): Promise<TopTrader[]> {
           coalesce(cl.closed_positions, 0) as closed_positions,
           coalesce(ct.notional_usd, 0) as notional_usd,
           coalesce(ct.unrealized_pnl_usd, 0) as unrealized_pnl_usd,
-          coalesce(cl.realized_pnl_raw, 0) as realized_pnl_raw,
+          coalesce(cl.realized_pnl_usd, 0) as realized_pnl_usd,
           coalesce(cl.total_fees_raw, 0) as total_fees_raw,
           coalesce(cl.winning_positions, 0) as winning_positions,
           coalesce(ct.max_debt_ratio, 0) as max_debt_ratio,
@@ -1180,7 +1326,7 @@ export async function getTopTraders(): Promise<TopTrader[]> {
         closed_positions::int as closed_positions,
         notional_usd::float8 as notional_usd,
         unrealized_pnl_usd::float8 as unrealized_pnl_usd,
-        realized_pnl_raw::numeric as realized_pnl_raw,
+        realized_pnl_usd::float8 as realized_pnl_usd,
         total_fees_raw::numeric as total_fees_raw,
         winning_positions::int as winning_positions,
         max_debt_ratio::float8 as max_debt_ratio,
@@ -1188,14 +1334,12 @@ export async function getTopTraders(): Promise<TopTrader[]> {
         capital_used_usd::float8 as capital_used_usd
       from combined
       where notional_usd > 1000 or closed_positions > 0
-      order by notional_usd desc
-      limit 50
+      order by owner asc
     `);
 
     const traders: TopTrader[] = result.rows.map((row: any) => {
       const unrealizedPnl = Number(row.unrealized_pnl_usd ?? 0);
-      const realizedPnlRaw = row.realized_pnl_raw ? Number(row.realized_pnl_raw) : 0;
-      const realizedPnlUsd = realizedPnlRaw / 1e18;
+      const realizedPnlUsd = Number(row.realized_pnl_usd ?? 0);
       const totalPnl = unrealizedPnl + realizedPnlUsd;
       const feesRaw = row.total_fees_raw ? Number(row.total_fees_raw) : 0;
       const feesUsd = feesRaw / 1e18;
@@ -1227,4 +1371,446 @@ export async function getTopTraders(): Promise<TopTrader[]> {
 
     return traders;
   });
+}
+
+
+export type CapitalFlowPeriod = "7d" | "30d" | "all";
+
+export type CapitalFlowEvent = {
+  wallet: string;
+  poolName: string;
+  asset: string;
+  side: string;
+  positionId: string;
+  direction: "deposit" | "withdrawal";
+  amountUsd: number;
+  blockTimestamp: string | null;
+};
+
+export type CapitalFlowCohort = {
+  cohort: string;
+  wallets: number;
+  depositsUsd: number;
+  withdrawalsUsd: number;
+  netFlowUsd: number;
+  explanation: string;
+};
+
+export type CapitalFlowData = {
+  period: CapitalFlowPeriod;
+  summary: {
+    netFlowUsd: number;
+    depositsUsd: number;
+    withdrawalsUsd: number;
+    newCapitalUsd: number;
+    returningCapitalUsd: number;
+    wallets: number;
+    events: number;
+  };
+  cohorts: CapitalFlowCohort[];
+  largestDeposits: CapitalFlowEvent[];
+  largestWithdrawals: CapitalFlowEvent[];
+};
+
+export type ResearchInsightCard = {
+  slug: string;
+  kicker: string;
+  title: string;
+  summary: string;
+  metric: string;
+  href: string;
+  tone: "positive" | "negative" | "warning" | "neutral";
+};
+
+export type ConvictionPosition = {
+  wallet: string;
+  poolAddress: string;
+  tokenId: string;
+  asset: string;
+  direction: string;
+  positionSizeUsd: number;
+  entryPriceUsd: number;
+  leverage: number;
+  liquidationDistancePct: number;
+  pnlUsd: number;
+};
+
+export type ArchetypeWallet = {
+  address: string;
+  reason: string;
+  metric: string;
+};
+
+export type TraderArchetype = {
+  name: string;
+  description: string;
+  wallets: ArchetypeWallet[];
+};
+
+export type ProtocolHealthMetric = {
+  label: string;
+  value: string;
+  explanation: string;
+  tone: "positive" | "negative" | "warning" | "neutral";
+};
+
+export type ResearchData = {
+  dashboard: DashboardData;
+  cards: ResearchInsightCard[];
+  capitalFlows: CapitalFlowData;
+  conviction: ConvictionPosition[];
+  archetypes: TraderArchetype[];
+  protocolHealth: ProtocolHealthMetric[];
+};
+
+function normalizePeriod(period?: string | null): CapitalFlowPeriod {
+  return period === "30d" || period === "all" ? period : "7d";
+}
+
+function periodWhereSql(alias = "e") {
+  return `($1 = 'all' or ${alias}.block_timestamp >= now() - case when $1 = '30d' then interval '30 days' else interval '7 days' end)`;
+}
+
+const capitalFlowEventsCte = `
+  with pool_meta as (
+    select distinct on (lower(pool_address))
+      lower(pool_address) as pool_address,
+      pool_name,
+      side,
+      collateral,
+      oracle_price
+    from public.fx_current_positions
+    order by lower(pool_address), updated_at desc nulls last
+  ), base as (
+    select
+      coalesce(nullif(lower(p.owner), ''), nullif(lower(o.owner), ''), nullif(lower(o.real_owner), ''), nullif(lower(c.user_address), ''), nullif(lower(c.recipient_address), '')) as wallet,
+      lower(c.pool_address) as pool_address,
+      coalesce(p.pool_name, o.pool_name, m.pool_name, c.pool_address) as pool_name,
+      coalesce(p.side, o.side, m.side, 'unknown') as side,
+      coalesce(p.collateral, o.collateral, m.collateral, '') as collateral,
+      coalesce(p.oracle_price, m.oracle_price, 0) as oracle_price,
+      c.position_id,
+      c.collateral_in_raw,
+      c.collateral_out_raw,
+      c.block_timestamp,
+      c.log_index
+    from public.fx_position_cashflows c
+    left join public.fx_current_positions p
+      on lower(p.pool_address) = lower(c.pool_address) and p.token_id = c.position_id
+    left join public.fx_official_positions o
+      on lower(o.pool_address) = lower(c.pool_address) and o.position_id = c.position_id
+    left join pool_meta m on m.pool_address = lower(c.pool_address)
+    where c.source = 'manager'
+      and c.position_id is not null
+      and c.block_timestamp is not null
+      and (c.collateral_in_raw > 0 or c.collateral_out_raw > 0)
+      and c.collateral_in_raw < 1000000000000000000000000
+      and c.collateral_out_raw < 1000000000000000000000000
+  ), flow_events as (
+    select
+      wallet, pool_address, pool_name, side, collateral, position_id, block_timestamp, log_index,
+      'deposit'::text as direction,
+      case
+        when side = 'long' and collateral = 'WBTC' then collateral_in_raw * oracle_price / 100000000
+        when side = 'long' then collateral_in_raw * oracle_price / 1000000000000000000
+        else collateral_in_raw / 1000000000000000000
+      end as amount_usd
+    from base
+    where collateral_in_raw > 0
+    union all
+    select
+      wallet, pool_address, pool_name, side, collateral, position_id, block_timestamp, log_index,
+      'withdrawal'::text as direction,
+      case
+        when side = 'long' and collateral = 'WBTC' then collateral_out_raw * oracle_price / 100000000
+        when side = 'long' then collateral_out_raw * oracle_price / 1000000000000000000
+        else collateral_out_raw / 1000000000000000000
+      end as amount_usd
+    from base
+    where collateral_out_raw > 0
+  ), enriched as (
+    select
+      e.*,
+      min(block_timestamp) filter (where direction = 'deposit') over (partition by wallet) as first_deposit_at,
+      case
+        when direction = 'deposit'
+          then row_number() over (partition by wallet, direction order by block_timestamp asc, log_index asc)
+        else null
+      end as deposit_rank
+    from flow_events e
+    where wallet is not null and amount_usd > 1
+  )
+`;
+
+function mapCapitalFlowEvent(row: Record<string, unknown>): CapitalFlowEvent {
+  return {
+    wallet: String(row.wallet),
+    poolName: String(row.poolName),
+    asset: displayInstrument(String(row.collateral || row.poolName)),
+    side: String(row.side),
+    positionId: String(row.positionId),
+    direction: String(row.direction) === "withdrawal" ? "withdrawal" : "deposit",
+    amountUsd: toNumber(row.amountUsd),
+    blockTimestamp: row.blockTimestamp instanceof Date ? row.blockTimestamp.toISOString() : null,
+  };
+}
+
+export async function getCapitalFlowData(periodInput?: string | null): Promise<CapitalFlowData> {
+  const period = normalizePeriod(periodInput);
+  const empty: CapitalFlowData = {
+    period,
+    summary: { netFlowUsd: 0, depositsUsd: 0, withdrawalsUsd: 0, newCapitalUsd: 0, returningCapitalUsd: 0, wallets: 0, events: 0 },
+    cohorts: [],
+    largestDeposits: [],
+    largestWithdrawals: []
+  };
+  if (!getDatabaseUrl()) return empty;
+
+  try {
+    return await withClient(async (client) => {
+      if (!(await tableExists(client, "public.fx_position_cashflows"))) return empty;
+      const where = periodWhereSql("e");
+      const [summaryResult, cohortResult, depositResult, withdrawalResult] = await Promise.all([
+        client.query<Record<string, unknown>>(`${capitalFlowEventsCte}
+          select
+            coalesce(sum(amount_usd) filter (where direction = 'deposit' and ${where}), 0)::float8 as "depositsUsd",
+            coalesce(sum(amount_usd) filter (where direction = 'withdrawal' and ${where}), 0)::float8 as "withdrawalsUsd",
+            coalesce(sum(amount_usd) filter (where direction = 'deposit' and deposit_rank = 1 and ${where}), 0)::float8 as "newCapitalUsd",
+            coalesce(sum(amount_usd) filter (where direction = 'deposit' and coalesce(deposit_rank, 2) > 1 and ${where}), 0)::float8 as "returningCapitalUsd",
+            count(distinct wallet) filter (where ${where})::int as wallets,
+            count(*) filter (where ${where})::int as events
+          from enriched e`, [period]),
+        client.query<Record<string, unknown>>(`${capitalFlowEventsCte}, period_events as (
+            select * from enriched e where ${where}
+          ), wallet_stats as (
+            select wallet,
+              coalesce(sum(amount_usd) filter (where direction = 'deposit'), 0) as deposits_usd,
+              coalesce(sum(amount_usd) filter (where direction = 'withdrawal'), 0) as withdrawals_usd,
+              count(*) filter (where direction = 'deposit') as deposit_events,
+              max(amount_usd) filter (where direction = 'deposit') as largest_deposit_usd,
+              min(first_deposit_at) as first_deposit_at
+            from period_events
+            group by wallet
+          ), cohorts as (
+            select
+              case
+                when first_deposit_at >= (case when $1 = 'all' then timestamp 'epoch' else now() - case when $1 = '30d' then interval '30 days' else interval '7 days' end end) and deposit_events > 0 then 'New wallets'
+                when largest_deposit_usd >= 100000 then 'Whale deposits'
+                when deposit_events >= 3 then 'Active adders'
+                else 'Returning wallets'
+              end as cohort,
+              wallet, deposits_usd, withdrawals_usd
+            from wallet_stats
+          )
+          select cohort,
+            count(*)::int as wallets,
+            coalesce(sum(deposits_usd), 0)::float8 as "depositsUsd",
+            coalesce(sum(withdrawals_usd), 0)::float8 as "withdrawalsUsd"
+          from cohorts
+          group by cohort
+          order by coalesce(sum(deposits_usd), 0) - coalesce(sum(withdrawals_usd), 0) desc`, [period]),
+        client.query<Record<string, unknown>>(`${capitalFlowEventsCte}
+          select wallet, pool_name as "poolName", collateral, side, position_id::text as "positionId", direction, amount_usd::float8 as "amountUsd", block_timestamp as "blockTimestamp"
+          from enriched e
+          where direction = 'deposit' and ${where}
+          order by amount_usd desc
+          limit 10`, [period]),
+        client.query<Record<string, unknown>>(`${capitalFlowEventsCte}
+          select wallet, pool_name as "poolName", collateral, side, position_id::text as "positionId", direction, amount_usd::float8 as "amountUsd", block_timestamp as "blockTimestamp"
+          from enriched e
+          where direction = 'withdrawal' and ${where}
+          order by amount_usd desc
+          limit 10`, [period])
+      ]);
+      const summary = summaryResult.rows[0] ?? {};
+      const depositsUsd = toNumber(summary.depositsUsd);
+      const withdrawalsUsd = toNumber(summary.withdrawalsUsd);
+      const explanations: Record<string, string> = {
+        "New wallets": "Wallets whose first observed collateral deposit occurred in this period.",
+        "Returning wallets": "Previously-seen wallets adding or removing collateral again.",
+        "Whale deposits": "Wallets with at least one deposit of $100K+ in the selected period.",
+        "Active adders": "Wallets with three or more deposit events in the selected period."
+      };
+      return {
+        period,
+        summary: {
+          depositsUsd,
+          withdrawalsUsd,
+          netFlowUsd: depositsUsd - withdrawalsUsd,
+          newCapitalUsd: toNumber(summary.newCapitalUsd),
+          returningCapitalUsd: toNumber(summary.returningCapitalUsd),
+          wallets: Number(summary.wallets ?? 0),
+          events: Number(summary.events ?? 0)
+        },
+        cohorts: cohortResult.rows.map((row) => {
+          const deposits = toNumber(row.depositsUsd);
+          const withdrawals = toNumber(row.withdrawalsUsd);
+          const cohort = String(row.cohort);
+          return { cohort, wallets: Number(row.wallets ?? 0), depositsUsd: deposits, withdrawalsUsd: withdrawals, netFlowUsd: deposits - withdrawals, explanation: explanations[cohort] ?? "Wallets grouped by deposit behavior in the selected period." };
+        }),
+        largestDeposits: depositResult.rows.map(mapCapitalFlowEvent),
+        largestWithdrawals: withdrawalResult.rows.map(mapCapitalFlowEvent)
+      };
+    });
+  } catch (error) {
+    console.error("Failed to load capital flow data", error);
+    return empty;
+  }
+}
+
+export async function getConvictionPositions(limit = 12): Promise<ConvictionPosition[]> {
+  if (!getDatabaseUrl()) return [];
+  try {
+    return await withClient(async (client) => {
+      if (!(await hasCurrentPositionsTable(client))) return [];
+      const result = await client.query<Record<string, unknown>>(`
+        select
+          lower(owner) as wallet,
+          lower(pool_address) as "poolAddress",
+          token_id::text as "tokenId",
+          case when collateral = 'WBTC' then 'BTC' else 'ETH' end as asset,
+          side as direction,
+          case when side = 'long' then coalesce(collateral_value_usd, 0) else coalesce(debt_value_usd, 0) end::float8 as "positionSizeUsd",
+          coalesce(
+            case when side = 'short' then ui_entry_price_usd else null end,
+            case
+              when side = 'long' and entry_price_raw is not null and entry_price_raw > 0 then entry_price_raw / 1000000000000000000
+              when side = 'short' and entry_price_raw is not null and entry_price_raw > 0 then 1000000000000000000::numeric / entry_price_raw
+              else 0
+            end
+          )::float8 as "entryPriceUsd",
+          case when coalesce(equity_usd, 0) > 0 then (case when side = 'long' then collateral_value_usd else debt_value_usd end) / equity_usd else 0 end::float8 as leverage,
+          greatest(0, 1 - coalesce(debt_ratio, 0))::float8 as "liquidationDistancePct",
+          coalesce(
+            case when side = 'short' then ui_unrealized_pnl_usd else null end,
+            case
+              when side = 'long' and entry_price_raw is not null and entry_price_raw > 0 then collateral_value_usd * (oracle_price * 1000000000000000000 / entry_price_raw - 1)
+              when side = 'short' and entry_price_raw is not null and entry_price_raw > 0 and oracle_price is not null and oracle_price > 0 then debt_value_usd * (1 - entry_price_raw::numeric / (oracle_price * 1000000000000000000))
+              else 0
+            end
+          )::float8 as "pnlUsd"
+        from public.fx_current_positions
+        where owner is not null
+        order by (case when side = 'long' then coalesce(collateral_value_usd, 0) else coalesce(debt_value_usd, 0) end) * greatest(coalesce(debt_ratio, 0), 0.1) desc
+        limit $1`, [limit]);
+      return result.rows.map((row) => ({
+        wallet: String(row.wallet),
+        poolAddress: String(row.poolAddress),
+        tokenId: String(row.tokenId),
+        asset: String(row.asset),
+        direction: String(row.direction),
+        positionSizeUsd: toNumber(row.positionSizeUsd),
+        entryPriceUsd: toNumber(row.entryPriceUsd),
+        leverage: toNumber(row.leverage),
+        liquidationDistancePct: toNumber(row.liquidationDistancePct),
+        pnlUsd: toNumber(row.pnlUsd)
+      }));
+    });
+  } catch (error) {
+    console.error("Failed to load conviction positions", error);
+    return [];
+  }
+}
+
+export async function getOpenPositions(limit = 500): Promise<PositionSummary[]> {
+  if (!getDatabaseUrl()) return [];
+  try {
+    return await withClient(async (client) => {
+      if (!(await hasCurrentPositionsTable(client))) return [];
+      const result = await client.query<Record<string, unknown>>(`
+        select pool_name as "poolName", pool_address as "poolAddress", side, collateral, token_id::text as "tokenId", owner,
+          raw_collateral::text as "rawCollateral", raw_debt::text as "rawDebt", coalesce(oracle_price,0)::float8 as "oraclePrice",
+          coalesce(case when side='short' then ui_entry_price_usd else null end,
+            case when side='long' and entry_price_raw is not null and entry_price_raw > 0 then entry_price_raw / 1000000000000000000
+                 when side='short' and entry_price_raw is not null and entry_price_raw > 0 then 1000000000000000000::numeric / entry_price_raw
+                 else 0 end)::float8 as "entryPriceUsd",
+          coalesce(case when side='short' then ui_unrealized_pnl_usd else null end,
+            case when side='long' and entry_price_raw is not null and entry_price_raw > 0 then collateral_value_usd * (oracle_price * 1000000000000000000 / entry_price_raw - 1)
+                 when side='short' and entry_price_raw is not null and entry_price_raw > 0 and oracle_price is not null and oracle_price > 0 then debt_value_usd * (1 - entry_price_raw::numeric / (oracle_price * 1000000000000000000))
+                 else 0 end)::float8 as "unrealizedPnlUsd",
+          coalesce(collateral_value_usd,0)::float8 as "collateralValueUsd", coalesce(debt_value_usd,0)::float8 as "debtValueUsd", coalesce(equity_usd,0)::float8 as "equityUsd", coalesce(debt_ratio,0)::float8 as "debtRatio"
+        from public.fx_current_positions
+        order by (case when side='long' then coalesce(collateral_value_usd,0) else coalesce(debt_value_usd,0) end) desc
+        limit $1`, [limit]);
+      return result.rows.map(mapPosition);
+    });
+  } catch (error) {
+    console.error("Failed to load open positions", error);
+    return [];
+  }
+}
+
+function compactUsdLabel(value: number) {
+  const sign = value < 0 ? "-" : "";
+  const absolute = Math.abs(value);
+  if (absolute >= 1_000_000) return `${sign}$${(absolute / 1_000_000).toFixed(2).replace(/\.00$/, "")}M`;
+  if (absolute >= 1_000) return `${sign}$${Math.round(absolute / 1_000).toLocaleString()}K`;
+  return `${sign}$${Math.round(absolute).toLocaleString()}`;
+}
+
+function buildArchetypes(traders: TraderSummary[]): TraderArchetype[] {
+  const byNotional = [...traders].sort((a, b) => b.notionalValueUsd - a.notionalValueUsd);
+  const whales = byNotional.slice(0, 5).map((t) => ({ address: t.owner, metric: compactUsdLabel(t.notionalValueUsd), reason: `Current notional ranks near the top of the tracked book; this archetype is size-based, not performance-based.` }));
+  const swing = [...traders].filter((t) => t.positions >= 2 && t.positions <= 15 && t.notionalValueUsd >= 10_000).sort((a,b) => b.totalPnlUsd - a.totalPnlUsd).slice(0,5).map((t) => ({ address: t.owner, metric: `${t.positions} open`, reason: `Moderate position count with meaningful exposure suggests position cycling rather than one-shot whale sizing.` }));
+  const momentum = [...traders].filter((t) => Math.max(t.ethLongExposureUsd + t.btcLongExposureUsd, t.ethShortExposureUsd + t.btcShortExposureUsd) / Math.max(t.notionalValueUsd, 1) > 0.8).sort((a,b)=>b.notionalValueUsd-a.notionalValueUsd).slice(0,5).map((t)=>({ address:t.owner, metric: compactUsdLabel(t.notionalValueUsd), reason:`More than 80% of current exposure points in one direction, so the wallet is expressing directional momentum rather than balanced inventory.`}));
+  const mean = [...traders].filter((t) => (t.ethLongExposureUsd > 0 && t.ethShortExposureUsd > 0) || (t.btcLongExposureUsd > 0 && t.btcShortExposureUsd > 0) || (Math.abs(t.ethNetExposureUsd) > 0 && Math.abs(t.btcNetExposureUsd) > 0 && Math.sign(t.ethNetExposureUsd) !== Math.sign(t.btcNetExposureUsd))).sort((a,b)=>b.notionalValueUsd-a.notionalValueUsd).slice(0,5).map((t)=>({address:t.owner, metric: compactUsdLabel(Math.abs(t.ethNetExposureUsd)+Math.abs(t.btcNetExposureUsd)), reason:`The wallet carries offsetting side or asset exposure, which is consistent with spread/mean-reversion behavior.`}));
+  const degens = [...traders].filter((t)=>t.maxDebtRatio >= 0.85).sort((a,b)=>b.maxDebtRatio-a.maxDebtRatio).slice(0,5).map((t)=>({address:t.owner, metric: formatPercent(t.maxDebtRatio), reason:`Maximum debt ratio is above 85%; this classification measures liquidation proximity, not skill.`}));
+  const survivors = [...traders].filter((t)=>t.maxDebtRatio >= 0.75 && t.unrealizedPnlUsd >= 0).sort((a,b)=>b.maxDebtRatio-a.maxDebtRatio).slice(0,5).map((t)=>({address:t.owner, metric:`${formatPercent(t.maxDebtRatio)} / ${compactUsdLabel(t.unrealizedPnlUsd)}`, reason:`High debt ratio with non-negative current PnL indicates the wallet has survived a close-to-liquidation risk state so far.`}));
+  return [
+    { name: "Whales", description: "Largest wallets by current notional exposure. This is a size ranking, not a performance score.", wallets: whales },
+    { name: "Swing Traders", description: "Wallets with multiple meaningful positions but not extreme churn. This approximates position-cycling behavior.", wallets: swing },
+    { name: "Momentum Traders", description: "Wallets whose current book is strongly one-sided by long/short exposure.", wallets: momentum },
+    { name: "Mean Reverters", description: "Wallets carrying offsetting asset or side exposure, often consistent with spread or reversion trades.", wallets: mean },
+    { name: "Degens", description: "Wallets nearest liquidation by debt ratio. This measures risk appetite, not profitability.", wallets: degens },
+    { name: "Liquidation Survivors", description: "High-risk wallets that remain in non-negative current PnL based on indexed snapshots.", wallets: survivors }
+  ];
+}
+
+function buildProtocolHealth(dashboard: DashboardData, capitalFlows: CapitalFlowData): ProtocolHealthMetric[] {
+  const totals = dashboard.totals;
+  const longShortTotal = totals.longNotionalUsd + totals.shortBorrowedExposureUsd || 1;
+  const avgLev = totals.equityUsd > 0 ? totals.trackedOpenInterestUsd / totals.equityUsd : 0;
+  return [
+    { label: "TVL", value: compactUsdLabel(totals.collateralValueUsd), explanation: "Tracked collateral value across currently open f(x) positions.", tone: "neutral" },
+    { label: "Open interest", value: compactUsdLabel(totals.trackedOpenInterestUsd), explanation: "Long collateral exposure plus short borrowed exposure for open positions.", tone: "neutral" },
+    { label: "Long / short ratio", value: `${((totals.longNotionalUsd / longShortTotal) * 100).toFixed(1)}% L`, explanation: "Share of tracked open interest currently on the long side versus short borrowed exposure.", tone: "neutral" },
+    { label: "Average leverage", value: `${avgLev.toFixed(2)}×`, explanation: "Open interest divided by current equity. This is a portfolio-level approximation.", tone: avgLev > 4 ? "warning" : "neutral" },
+    { label: "Net deposits", value: compactUsdLabel(capitalFlows.summary.netFlowUsd), explanation: "Collateral deposits minus withdrawals in the selected 7-day research window.", tone: capitalFlows.summary.netFlowUsd >= 0 ? "positive" : "negative" },
+    { label: "Active traders", value: totals.uniqueTraders.toLocaleString(), explanation: "Distinct wallets currently owning tracked position NFTs.", tone: "neutral" },
+    { label: "Liquidation risk", value: `${totals.riskQueuePositions80.toLocaleString()} pos`, explanation: "Positions at or above 80% debt ratio; this is a risk queue proxy, not a liquidation prediction.", tone: totals.riskQueuePositions80 > 0 ? "warning" : "positive" },
+    { label: "Fee generation", value: compactUsdLabel(totals.fundingWindowFeesUsd), explanation: "Open/close fees observed in the current 8h exchange-style UTC window.", tone: "neutral" }
+  ];
+}
+
+function buildResearchCards(dashboard: DashboardData, capitalFlows: CapitalFlowData, conviction: ConvictionPosition[], traders: TopTrader[]): ResearchInsightCard[] {
+  const ethLongPool = dashboard.pools.find((p) => p.side === "long" && displayInstrument(p.collateral) === "ETH");
+  const btcShortRisk = conviction.filter((p) => p.asset === "BTC" && p.direction === "short" && p.liquidationDistancePct <= 0.25);
+  const largestDeposit = capitalFlows.largestDeposits[0];
+  const topTrader = traders.sort((a, b) => b.totalPnlUsd - a.totalPnlUsd)[0];
+  const whale = conviction[0];
+  return [
+    { slug: "eth-longs-leverage", kicker: "Market Structure", title: "ETH longs increasing leverage", summary: `ETH long positions show an average debt ratio of ${formatPercent(ethLongPool?.avgDebtRatio ?? 0)} across ${(ethLongPool?.positions ?? 0).toLocaleString()} open positions.`, metric: formatPercent(ethLongPool?.avgDebtRatio ?? 0), href: "/research/eth-longs-leverage", tone: "warning" },
+    { slug: "btc-shorts-liquidation-cluster", kicker: "Liquidation Maps", title: "BTC shorts clustering near liquidation levels", summary: `${btcShortRisk.length} high-conviction BTC short positions sit within 25% debt-ratio headroom in the conviction sample.`, metric: `${btcShortRisk.length} positions`, href: "/research/btc-shorts-liquidation-cluster", tone: btcShortRisk.length ? "warning" : "neutral" },
+    { slug: "largest-wallet-added-exposure", kicker: "Whale Activity", title: "Largest wallet added exposure", summary: largestDeposit ? `${formatAddress(largestDeposit.wallet)} deposited ${compactUsdLabel(largestDeposit.amountUsd)} into ${displayPool(largestDeposit.poolName)}.` : "No qualifying deposit event in this window.", metric: largestDeposit ? compactUsdLabel(largestDeposit.amountUsd) : "—", href: largestDeposit ? `/traders/${largestDeposit.wallet}` : "/research/largest-wallet-added-exposure", tone: "neutral" },
+    { slug: "net-inflows-positive", kicker: "Capital Flows", title: "Net inflows turned positive this week", summary: `7d net flow is ${compactUsdLabel(capitalFlows.summary.netFlowUsd)} from ${compactUsdLabel(capitalFlows.summary.depositsUsd)} deposits and ${compactUsdLabel(capitalFlows.summary.withdrawalsUsd)} withdrawals.`, metric: compactUsdLabel(capitalFlows.summary.netFlowUsd), href: "/research/capital-flows", tone: capitalFlows.summary.netFlowUsd >= 0 ? "positive" : "negative" },
+    { slug: "top-trader-reversed-position", kicker: "Trader Archetypes", title: "Top trader reversed position", summary: topTrader ? `${formatAddress(topTrader.address)} leads Top PnL at ${compactUsdLabel(topTrader.totalPnlUsd)}. Use the profile timeline to inspect side changes and position adds/removes.` : "No trader PnL data available yet.", metric: topTrader ? compactUsdLabel(topTrader.totalPnlUsd) : "—", href: topTrader ? `/traders/${topTrader.address}` : "/top-traders", tone: "positive" },
+    { slug: "highest-conviction-position", kicker: "Conviction Tracker", title: "Highest conviction position", summary: whale ? `${formatAddress(whale.wallet)} carries ${compactUsdLabel(whale.positionSizeUsd)} ${whale.asset} ${whale.direction} exposure at ${whale.leverage.toFixed(2)}× estimated leverage.` : "No conviction data available yet.", metric: whale ? compactUsdLabel(whale.positionSizeUsd) : "—", href: whale ? `/positions/${whale.poolAddress}-${whale.tokenId}` : "/research/highest-conviction-position", tone: "neutral" }
+  ];
+}
+
+export async function getResearchData(): Promise<ResearchData> {
+  const [dashboard, capitalFlows, conviction, traders] = await Promise.all([
+    getDashboardData(),
+    getCapitalFlowData("7d"),
+    getConvictionPositions(12),
+    getTopTraders()
+  ]);
+  return {
+    dashboard,
+    capitalFlows,
+    conviction,
+    archetypes: buildArchetypes(dashboard.traders),
+    protocolHealth: buildProtocolHealth(dashboard, capitalFlows),
+    cards: buildResearchCards(dashboard, capitalFlows, conviction, traders)
+  };
 }

@@ -1,4 +1,4 @@
-import { displayInstrument, displayPool, formatPercent, formatUsd, getDashboardData } from "../lib/fx-dashboard";
+import { displayInstrument, displayPool, formatAddress, formatPercent, formatUsd, getResearchData, type ProtocolHealthMetric, type ResearchInsightCard } from "../lib/fx-dashboard";
 import { LastRefreshedCounter } from "./last-refreshed";
 import { LocalTime } from "./local-time";
 import { AverageEntryPriceBook } from "./average-entry-book";
@@ -225,8 +225,61 @@ function MarketOverviewTerminal({
   );
 }
 
+function toneClass(tone: string) {
+  return tone === "positive" ? "positive" : tone === "negative" ? "negative" : tone === "warning" ? "warning" : "";
+}
+
+function ResearchCards({ cards }: { cards: ResearchInsightCard[] }) {
+  return (
+    <section className="research-strip" aria-label="Research intelligence cards">
+      <div className="section-header">
+        <div>
+          <p className="eyebrow">Research intelligence</p>
+          <h2>Signals worth opening first</h2>
+          <p className="muted small">Each card states exactly what it is measuring and links to the relevant research view or wallet profile.</p>
+        </div>
+        <a className="button" href="/research">Open research hub →</a>
+      </div>
+      <div className="research-card-grid">
+        {cards.slice(0, 5).map((card) => (
+          <a className={`research-card ${toneClass(card.tone)}`} href={card.href} key={card.slug}>
+            <span className="metric-label">{card.kicker}</span>
+            <strong>{card.title}</strong>
+            <span className="research-card-metric">{card.metric}</span>
+            <span className="muted small">{card.summary}</span>
+          </a>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ProtocolHealthStrip({ metrics }: { metrics: ProtocolHealthMetric[] }) {
+  return (
+    <section aria-label="Protocol health" style={{ marginTop: 20 }}>
+      <div className="section-header">
+        <div>
+          <p className="eyebrow">Protocol Health</p>
+          <h2>Research-grade health checks</h2>
+          <p className="muted small">TVL, open interest, risk, flow, active-trader and fee metrics are shown with definitions instead of opaque scores.</p>
+        </div>
+      </div>
+      <div className="health-grid dense">
+        {metrics.map((metric) => (
+          <div className={`health-cell ${toneClass(metric.tone)}`} title={metric.explanation} key={metric.label}>
+            <span className="metric-label">{metric.label}</span>
+            <strong>{metric.value}</strong>
+            <span className="muted small">{metric.explanation}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export default async function HomePage() {
-  const dashboard = await getDashboardData();
+  const research = await getResearchData();
+  const dashboard = research.dashboard;
 
   // Compute per-instrument exposure from pool data
   const ethLong = dashboard.pools
@@ -303,6 +356,9 @@ export default async function HomePage() {
         fundingWindowEnd={dashboard.totals.fundingWindowEnd}
         hasSnapshot={dashboard.hasSnapshot}
       />
+
+      <ResearchCards cards={research.cards} />
+      <ProtocolHealthStrip metrics={research.protocolHealth} />
 
       {dashboard.hasSnapshot && (
         <section style={{ marginTop: 20 }} aria-label="Average entry price book">

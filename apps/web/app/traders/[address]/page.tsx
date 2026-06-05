@@ -47,6 +47,17 @@ function formatEntryMove(value: number | null) {
   return <span style={{ color: value >= 0 ? "var(--positive)" : "var(--negative)" }}>{formatPercent(value)}</span>;
 }
 
+function formatDays(days: number | null) {
+  if (days === null || !Number.isFinite(days) || days <= 0) return "—";
+  if (days < 1) return `${Math.round(days * 24)}h`;
+  return `${days.toFixed(days >= 10 ? 0 : 1)}d`;
+}
+
+function leverageFor(position: { debtRatio: number; collateralValueUsd: number; debtValueUsd: number; equityUsd: number }) {
+  if (position.equityUsd > 0) return (position.collateralValueUsd + Math.max(0, position.debtValueUsd)) / position.equityUsd;
+  return position.debtRatio > 0 && position.debtRatio < 1 ? 1 / (1 - position.debtRatio) : 0;
+}
+
 export const dynamic = "force-dynamic";
 
 type TraderPageProps = {
@@ -70,11 +81,32 @@ export default async function TraderPage({ params }: TraderPageProps) {
   // Total long/short for bias bar
   const totalLong = s.ethLongExposureUsd + s.btcLongExposureUsd;
   const totalShort = s.ethShortExposureUsd + s.btcShortExposureUsd;
-  const totalBoth = totalLong + totalShort || 1;
-  const longPct = (totalLong / totalBoth) * 100;
-  const shortPct = (totalShort / totalBoth) * 100;
-  const dominant = longPct >= 50 ? "long" : "short";
+  const totalBothRaw = totalLong + totalShort;
+  const totalBoth = totalBothRaw || 1;
+  const longPct = totalBothRaw > 0 ? (totalLong / totalBoth) * 100 : 0;
+  const shortPct = totalBothRaw > 0 ? (totalShort / totalBoth) * 100 : 0;
+  const dominant = totalBothRaw === 0 ? "flat" : longPct >= 50 ? "long" : "short";
   const dominantPct = Math.max(longPct, shortPct);
+  const realizedPnlUsd = profile.history.reduce((sum, item) => sum + item.realizedPnlUsd, 0);
+  const lifetimePnlUsd = realizedPnlUsd + s.unrealizedPnlUsd;
+  const capitalBaseUsd = Math.max(s.collateralValueUsd, s.notionalValueUsd);
+  const roi = capitalBaseUsd > 0 ? lifetimePnlUsd / capitalBaseUsd : null;
+  const roiLabel = roi === null ? "—" : formatPercent(roi);
+  const avgLeverage = profile.positions.length > 0
+    ? profile.positions.reduce((sum, position) => sum + leverageFor(position), 0) / profile.positions.length
+    : 0;
+  const holdSamples = profile.history
+    .map((item) => item.firstAt && item.lastAt ? (new Date(item.lastAt).getTime() - new Date(item.firstAt).getTime()) / 86400000 : null)
+    .filter((value): value is number => value !== null && Number.isFinite(value) && value >= 0);
+  const avgHoldDays = holdSamples.length > 0 ? holdSamples.reduce((sum, value) => sum + value, 0) / holdSamples.length : null;
+  const biggestWin = profile.history.reduce((best, item) => item.realizedPnlUsd > best ? item.realizedPnlUsd : best, 0);
+  const biggestLoss = profile.history.reduce((worst, item) => item.realizedPnlUsd < worst ? item.realizedPnlUsd : worst, 0);
+  const ethExposure = s.ethLongExposureUsd + s.ethShortExposureUsd;
+  const btcExposure = s.btcLongExposureUsd + s.btcShortExposureUsd;
+  const preferredAsset = ethExposure === 0 && btcExposure === 0 ? "—" : ethExposure >= btcExposure ? "ETH" : "BTC";
+  const biasLabel = dominant === "flat" ? "flat" : dominant === "long" ? "long-biased" : "short-biased";
+  const observedBehavior = `${preferredAsset === "—" ? "No dominant asset yet" : `Primarily ${preferredAsset} ${biasLabel}`}. Usually uses ${avgLeverage ? avgLeverage.toFixed(1) : "—"}× average leverage across open positions. Average hold period is ${formatDays(avgHoldDays)} based on indexed cashflow timestamps. Current book is ${dominant === "flat" ? "flat" : `${dominantPct.toFixed(0)}% ${dominant}`}.`;
+
 
   return (
     <section>
@@ -95,16 +127,28 @@ export default async function TraderPage({ params }: TraderPageProps) {
 
       {/* Compact summary strip — no cards */}
       <div style={{ display: "flex", flexWrap: "wrap", gap: "12px 28px", marginBottom: 20, padding: "10px 0", borderBottom: "1px solid var(--border)" }}>
-        <div><span className="metric-value" style={{ fontSize: 20 }}>{formatUsd(s.notionalValueUsd)}</span><div className="metric-label">Notional</div></div>
-        <div><span className="metric-value" style={{ fontSize: 20, color: s.equityUsd >= 0 ? "var(--positive)" : "var(--negative)" }}>{formatUsd(s.equityUsd)}</span><div className="metric-label">Equity</div></div>
-        <div><span className="metric-value" style={{ fontSize: 20 }}>{formatUsd(s.debtValueUsd)}</span><div className="metric-label">Debt</div></div>
-        <div><span className="metric-value" style={{ fontSize: 20 }}>{formatUsd(s.feesUsd)}</span><div className="metric-label">Fees paid</div></div>
-        <div title={`${formatUsd(s.fundingWindowFeesUsd)} across ${s.fundingWindowFeePositions.toLocaleString()} positions / ${s.fundingWindowFeeEvents.toLocaleString()} events in the current 8h exchange funding window`}><span className="metric-value" style={{ fontSize: 20 }}>{formatUsd(s.fundingWindowFeesUsd)}</span><div className="metric-label">Fees / 8h</div></div>
+        <div title="Lifetime PnL = realized PnL from indexed position history + current unrealized PnL."><span className="metric-value" style={{ fontSize: 20, color: lifetimePnlUsd >= 0 ? "var(--positive)" : "var(--negative)" }}>{formatCompactUsd(lifetimePnlUsd)}</span><div className="metric-label">Lifetime PnL</div></div>
+        <div><span className="metric-value" style={{ fontSize: 20, color: realizedPnlUsd >= 0 ? "var(--positive)" : "var(--negative)" }}>{formatCompactUsd(realizedPnlUsd)}</span><div className="metric-label">Realized PnL</div></div>
         <div><span className="metric-value" style={{ fontSize: 20, color: s.unrealizedPnlUsd >= 0 ? "var(--positive)" : "var(--negative)" }}>{formatCompactUsd(s.unrealizedPnlUsd)}</span><div className="metric-label">Unrealized PnL</div></div>
-        <div><span className="metric-value" style={{ fontSize: 20, color: s.totalPnlUsd >= 0 ? "var(--positive)" : "var(--negative)" }}>{formatCompactUsd(s.totalPnlUsd)}</span><div className="metric-label">Total PnL</div></div>
-        <div><span className="metric-value" style={{ fontSize: 20 }}>{nf.format(s.positions)}</span><div className="metric-label">Positions</div></div>
-        <div><span className="metric-value" style={{ fontSize: 20 }}>{formatPercent(s.maxDebtRatio)}</span><div className="metric-label">Max debt ratio</div></div>
+        <div title="ROI = lifetime PnL divided by max(current collateral, current notional). Closed-only wallets without current capital show n/a."><span className="metric-value" style={{ fontSize: 20 }}>{roiLabel}</span><div className="metric-label">ROI</div></div>
+        <div><span className="metric-value" style={{ fontSize: 20 }}>{formatUsd(s.notionalValueUsd)}</span><div className="metric-label">Notional</div></div>
+        <div><span className="metric-value" style={{ fontSize: 20 }}>{avgLeverage ? `${avgLeverage.toFixed(2)}×` : "—"}</span><div className="metric-label">Average leverage</div></div>
+        <div><span className="metric-value" style={{ fontSize: 20 }}>{formatDays(avgHoldDays)}</span><div className="metric-label">Average hold time</div></div>
+        <div><span className="metric-value" style={{ fontSize: 20 }}>{biggestWin ? formatCompactUsd(biggestWin) : "—"}</span><div className="metric-label">Biggest win</div></div>
+        <div><span className="metric-value" style={{ fontSize: 20 }}>{biggestLoss ? formatCompactUsd(biggestLoss) : "—"}</span><div className="metric-label">Biggest loss</div></div>
+        <div><span className="metric-value" style={{ fontSize: 20 }}>{preferredAsset}</span><div className="metric-label">Preferred asset</div></div>
+        <div><span className="metric-value" style={{ fontSize: 20 }}>{dominantPct.toFixed(0)}% {dominant === "long" ? "L" : "S"}</span><div className="metric-label">Long/short bias</div></div>
+        <div><span className="metric-value" style={{ fontSize: 20 }}>{formatPercent(s.maxDebtRatio)}</span><div className="metric-label">Liquidation proximity</div></div>
       </div>
+
+      <section className="observed-behavior">
+        <div>
+          <p className="eyebrow">Observed Behavior</p>
+          <h2>Behavioral readout</h2>
+        </div>
+        <p>{observedBehavior}</p>
+        <p className="muted small">This block is generated from current exposure, debt ratios, indexed cashflow timestamps and realized/unrealized PnL. It is descriptive, not advice.</p>
+      </section>
 
       {/* Exposures — compact merged section */}
       <div style={{ display: "flex", gap: 24, flexWrap: "wrap", marginBottom: 20, padding: "10px 0", borderBottom: "1px solid var(--border)" }}>
@@ -144,7 +188,7 @@ export default async function TraderPage({ params }: TraderPageProps) {
 
       {/* Open positions table */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-        <h2 style={{ fontSize: 14, fontWeight: 600 }}>Open positions <span className="muted small" style={{ fontWeight: 400 }}>({profile.positions.length})</span></h2>
+        <h2 style={{ fontSize: 14, fontWeight: 600 }}>Current positions, entry price history & liquidation proximity <span className="muted small" style={{ fontWeight: 400 }}>({profile.positions.length})</span></h2>
         <span className="muted small">Snapshot: <LocalTime date={profile.generatedAt} /></span>
       </div>
 
@@ -186,6 +230,22 @@ export default async function TraderPage({ params }: TraderPageProps) {
           </tbody>
         </table>
       </div>
+
+      {profile.history.length > 0 && (
+        <section className="timeline-strip">
+          <div>
+            <p className="eyebrow">Position timeline</p>
+            <h2>First and latest indexed activity</h2>
+            <p className="muted small">Average hold time is computed from first-to-last cashflow timestamps when available.</p>
+          </div>
+          <div className="terminal-metrics">
+            <div><span>History rows</span><strong>{profile.history.length.toLocaleString()}</strong></div>
+            <div><span>Average hold</span><strong>{formatDays(avgHoldDays)}</strong></div>
+            <div><span>Biggest win</span><strong className="positive">{biggestWin ? formatCompactUsd(biggestWin) : "—"}</strong></div>
+            <div><span>Biggest loss</span><strong className="negative">{biggestLoss ? formatCompactUsd(biggestLoss) : "—"}</strong></div>
+          </div>
+        </section>
+      )}
 
 
       {/* Current 8h exchange-window fee activity */}

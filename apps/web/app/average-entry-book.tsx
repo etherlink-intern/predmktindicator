@@ -54,13 +54,16 @@ export function AverageEntryPriceBook({
   useEffect(() => {
     if (!tableWrapRef.current || !currentPrice || rows.length === 0) return;
     const container = tableWrapRef.current;
-    const rowEls = container.querySelectorAll(".avg-entry-row:not(.avg-entry-head)");
+    const rowEls = container.querySelectorAll<HTMLElement>(".avg-entry-row:not(.avg-entry-head)");
     for (let i = 0; i < rows.length; i++) {
       const bucket = rows[i];
       if (currentPrice >= bucket.bucketLowUsd && currentPrice <= bucket.bucketHighUsd) {
         const targetEl = rowEls[i];
         if (targetEl) {
-          targetEl.scrollIntoView({ block: "center", behavior: "smooth" });
+          // Keep the current-price bucket centered inside the ladder only.
+          // scrollIntoView can move the whole document on refresh, which made the page jump downward.
+          const top = targetEl.offsetTop - container.offsetTop - container.clientHeight / 2 + targetEl.clientHeight / 2;
+          container.scrollTo({ top: Math.max(0, top), behavior: "auto" });
         }
         return;
       }

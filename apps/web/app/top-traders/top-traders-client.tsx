@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { formatPercent, formatUsd, type TopTrader } from "../../lib/fx-format";
 
 type TabId = "pnl" | "roi" | "realized" | "active" | "whale";
+type SortKey = "rank" | "trader" | "metric" | "totalPnl" | "unrealized" | "realized" | "winRate" | "positions" | "notional" | "debt" | "fees";
+type SortDirection = "asc" | "desc";
 
 const TABS: { id: TabId; label: string; description: string }[] = [
   {
@@ -16,7 +18,7 @@ const TABS: { id: TabId; label: string; description: string }[] = [
     id: "roi",
     label: "Top ROI",
     description:
-      "Return on Investment = total PnL ÷ capital used. Ranks by capital efficiency. Trader must have at least $1K in capital to qualify.",
+      "Return on Investment = total PnL ÷ capital used. Ranks by capital efficiency. Trader must have at least $1K in capital/notional to qualify.",
   },
   {
     id: "realized",
@@ -69,33 +71,32 @@ function PnlBar({ value, maxAbs }: { value: number; maxAbs: number }) {
   );
 }
 
-function sortTraders(traders: TopTrader[], tab: TabId): TopTrader[] {
+function defaultRankTraders(traders: TopTrader[], tab: TabId): TopTrader[] {
   const sorted = [...traders];
   switch (tab) {
     case "pnl": {
-      const positive = sorted.filter((t) => t.totalPnlUsd > 0).sort((a, b) => b.totalPnlUsd - a.totalPnlUsd);
-      const zero = sorted.filter((t) => t.totalPnlUsd === 0);
-      const negative = sorted.filter((t) => t.totalPnlUsd < 0).sort((a, b) => b.totalPnlUsd - a.totalPnlUsd);
-      return [...positive, ...zero, ...negative].slice(0, 10);
+      const positive = sorted.filter((t) => t.totalPnlUsd > 0).sort((a, b) => b.totalPnlUsd - a.totalPnlUsd || a.address.localeCompare(b.address));
+      const zero = sorted.filter((t) => t.totalPnlUsd === 0).sort((a, b) => a.address.localeCompare(b.address));
+      const negative = sorted.filter((t) => t.totalPnlUsd < 0).sort((a, b) => b.totalPnlUsd - a.totalPnlUsd || a.address.localeCompare(b.address));
+      return [...positive, ...zero, ...negative];
     }
     case "roi":
       return sorted
         .filter((t) => Math.max(t.capitalUsedUsd, t.notionalUsd) >= 1000)
-        .sort((a, b) => b.roi - a.roi)
-        .slice(0, 10);
+        .sort((a, b) => b.roi - a.roi || b.totalPnlUsd - a.totalPnlUsd || a.address.localeCompare(b.address));
     case "realized": {
       const withData = sorted
         .filter((t) => t.realizedPnlUsd !== 0 || t.closedPositions > 0)
-        .sort((a, b) => b.realizedPnlUsd - a.realizedPnlUsd);
-      const withoutData = sorted.filter((t) => t.realizedPnlUsd === 0 && t.closedPositions === 0);
-      return [...withData, ...withoutData].slice(0, 10);
+        .sort((a, b) => b.realizedPnlUsd - a.realizedPnlUsd || a.address.localeCompare(b.address));
+      const withoutData = sorted.filter((t) => t.realizedPnlUsd === 0 && t.closedPositions === 0).sort((a, b) => a.address.localeCompare(b.address));
+      return [...withData, ...withoutData];
     }
     case "active":
-      return sorted.sort((a, b) => b.totalPositions - a.totalPositions).slice(0, 10);
+      return sorted.sort((a, b) => b.totalPositions - a.totalPositions || b.notionalUsd - a.notionalUsd || a.address.localeCompare(b.address));
     case "whale":
-      return sorted.sort((a, b) => b.notionalUsd - a.notionalUsd).slice(0, 10);
+      return sorted.sort((a, b) => b.notionalUsd - a.notionalUsd || b.totalPositions - a.totalPositions || a.address.localeCompare(b.address));
     default:
-      return sorted.slice(0, 10);
+      return sorted;
   }
 }
 
@@ -119,20 +120,112 @@ function getMetricValue(t: TopTrader, tab: TabId): number {
   }
 }
 
+function getSortValue(t: TopTrader, key: SortKey, tab: TabId): number | string {
+  switch (key) {
+    case "rank": return 0;
+    case "trader": return t.address;
+    case "metric": return getMetricValue(t, tab);
+    case "totalPnl": return t.totalPnlUsd;
+    case "unrealized": return t.unrealizedPnlUsd;
+    case "realized": return t.realizedPnlUsd;
+    case "winRate": return t.closedPositions > 0 ? t.winRate : -1;
+    case "positions": return t.totalPositions;
+    case "notional": return t.notionalUsd;
+    case "debt": return t.maxDebtRatio;
+    case "fees": return t.feesUsd;
+  }
+}
+
+function sortByHeader(traders: TopTrader[], tab: TabId, key: SortKey, direction: SortDirection) {
+  if (key === "rank") return defaultRankTraders(traders, tab);
+  return [...traders].sort((a, b) => {
+    const av = getSortValue(a, key, tab);
+    const bv = getSortValue(b, key, tab);
+    let delta = 0;
+    if (typeof av === "string" || typeof bv === "string") {
+      delta = String(av).localeCompare(String(bv));
+    } else {
+      delta = av === bv ? 0 : av - bv;
+    }
+    if (delta === 0) delta = a.address.localeCompare(b.address);
+    return direction === "asc" ? delta : -delta;
+  });
+}
+
+function SortHeader({
+  label,
+  keyName,
+  activeKey,
+  direction,
+  className,
+  style,
+  onSort,
+}: {
+  label: string;
+  keyName: SortKey;
+  activeKey: SortKey | null;
+  direction: SortDirection;
+  className?: string;
+  style?: React.CSSProperties;
+  onSort: (key: SortKey) => void;
+}) {
+  const active = activeKey === keyName;
+  return (
+    <th className={className} style={style}>
+      <button
+        type="button"
+        className="sort-button"
+        onClick={() => onSort(keyName)}
+        aria-label={`Sort by ${label}`}
+        title={`Sort by ${label}`}
+      >
+        {label}
+        <span aria-hidden="true">{active ? (direction === "asc" ? " ↑" : " ↓") : ""}</span>
+      </button>
+    </th>
+  );
+}
+
 export function TopTradersClient({ traders }: { traders: TopTrader[] }) {
   const [tab, setTab] = useState<TabId>("pnl");
+  const [walletSearch, setWalletSearch] = useState("");
+  const [sortKey, setSortKey] = useState<SortKey | null>(null);
+  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
 
-  const ranked = sortTraders(traders, tab);
   const activeTab = TABS.find((t) => t.id === tab)!;
+
+  const ranked = useMemo(() => {
+    const search = walletSearch.trim().toLowerCase();
+    const filtered = traders.filter((trader) => {
+      if (!search) return true;
+      return trader.address.toLowerCase().includes(search);
+    });
+    return sortKey ? sortByHeader(filtered, tab, sortKey, sortDirection) : defaultRankTraders(filtered, tab);
+  }, [sortDirection, sortKey, tab, traders, walletSearch]);
+
   const maxPnl = Math.max(1, ...ranked.map((t) => Math.abs(t.totalPnlUsd)));
+
+  function selectTab(nextTab: TabId) {
+    setTab(nextTab);
+    setSortKey(null);
+    setSortDirection("desc");
+  }
+
+  function updateSort(nextKey: SortKey) {
+    if (sortKey === nextKey) {
+      setSortDirection((current) => (current === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setSortKey(nextKey);
+    setSortDirection(nextKey === "trader" ? "asc" : "desc");
+  }
 
   return (
     <section>
       <p className="eyebrow">Rankings</p>
-      <h1>Top 10 Traders</h1>
-      <p className="muted">Select a ranking method below. Each tab sorts traders by a different dimension of performance.</p>
+      <h1>Trader rankings</h1>
+      <p className="muted">Select a ranking method below, search by wallet, or click a table header to sort the current results.</p>
 
-      {/* Tab bar */}
       <div
         style={{
           display: "flex",
@@ -147,7 +240,7 @@ export function TopTradersClient({ traders }: { traders: TopTrader[] }) {
         {TABS.map((t) => (
           <button
             key={t.id}
-            onClick={() => setTab(t.id)}
+            onClick={() => selectTab(t.id)}
             style={{
               background: "none",
               border: "none",
@@ -166,40 +259,55 @@ export function TopTradersClient({ traders }: { traders: TopTrader[] }) {
         ))}
       </div>
 
-      {/* Tab description */}
-      <p className="muted small" style={{ marginBottom: 16, lineHeight: 1.5 }} title={activeTab.description}>
+      <p className="muted small" style={{ marginBottom: 12, lineHeight: 1.5 }} title={activeTab.description}>
         {activeTab.description}
       </p>
 
+      <div className="filter-bar" aria-label="Trader ranking filters">
+        <label>
+          <span>Wallet search</span>
+          <input
+            placeholder="0x..."
+            type="text"
+            value={walletSearch}
+            onChange={(event) => setWalletSearch(event.target.value)}
+          />
+        </label>
+        <p className="muted small">
+          Showing {ranked.length.toLocaleString()} of {traders.length.toLocaleString()} wallets. {sortKey ? `Sorted by table header: ${sortKey}.` : `Default tab ranking: ${activeTab.label}.`}
+        </p>
+      </div>
+
       {ranked.length === 0 ? (
         <div className="card-warning">
-          <p className="muted">No trader data available yet. Rankings will appear after positions are synced.</p>
+          <p className="muted">No trader data matches the current search.</p>
         </div>
       ) : (
-        <div style={{ overflowX: "auto" }}>
-          <table className="compact" style={{ width: "100%", minWidth: 680 }}>
+        <div className="table-wrap" style={{ marginTop: 12 }}>
+          <table className="compact" style={{ width: "100%", minWidth: 820 }}>
             <thead>
               <tr>
-                <th style={{ width: 36 }}>#</th>
-                <th>Trader</th>
-                <th className="numeric" style={{ width: 140 }}>{getMetricLabel(tab)}</th>
-                <th className="numeric" style={{ width: 100 }}>Realized</th>
-                <th className="numeric" style={{ width: 80 }}>Win Rate</th>
-                <th className="numeric" style={{ width: 85 }}>Positions</th>
-                <th className="numeric" style={{ width: 110 }}>Notional</th>
-                <th className="numeric" style={{ width: 75 }}>Debt</th>
-                <th className="numeric" style={{ width: 85 }}>Fees</th>
+                <SortHeader label="#" keyName="rank" activeKey={sortKey} direction={sortDirection} onSort={updateSort} style={{ width: 36 }} />
+                <SortHeader label="Trader" keyName="trader" activeKey={sortKey} direction={sortDirection} onSort={updateSort} />
+                <SortHeader label={getMetricLabel(tab)} keyName="metric" activeKey={sortKey} direction={sortDirection} onSort={updateSort} className="numeric" style={{ width: 140 }} />
+                <SortHeader label="Unrealized" keyName="unrealized" activeKey={sortKey} direction={sortDirection} onSort={updateSort} className="numeric" style={{ width: 110 }} />
+                <SortHeader label="Realized" keyName="realized" activeKey={sortKey} direction={sortDirection} onSort={updateSort} className="numeric" style={{ width: 100 }} />
+                <SortHeader label="Win Rate" keyName="winRate" activeKey={sortKey} direction={sortDirection} onSort={updateSort} className="numeric" style={{ width: 80 }} />
+                <SortHeader label="Positions" keyName="positions" activeKey={sortKey} direction={sortDirection} onSort={updateSort} className="numeric" style={{ width: 85 }} />
+                <SortHeader label="Notional" keyName="notional" activeKey={sortKey} direction={sortDirection} onSort={updateSort} className="numeric" style={{ width: 110 }} />
+                <SortHeader label="Debt" keyName="debt" activeKey={sortKey} direction={sortDirection} onSort={updateSort} className="numeric" style={{ width: 75 }} />
+                <SortHeader label="Fees" keyName="fees" activeKey={sortKey} direction={sortDirection} onSort={updateSort} className="numeric" style={{ width: 85 }} />
               </tr>
             </thead>
             <tbody>
               {ranked.map((t, i) => {
                 const isPositive = t.totalPnlUsd >= 0;
-                const rankColor = i < 3 ? "var(--gold)" : "inherit";
+                const metricValue = getMetricValue(t, tab);
                 return (
                   <tr key={t.address}>
-                    <td className="mono" style={{ fontWeight: 800, color: rankColor }}>{i + 1}</td>
+                    <td className="mono" style={{ fontWeight: 800 }}>#{i + 1}</td>
                     <td>
-                      <a href={`/traders/${t.address}`} className="mono" style={{ textDecoration: "none" }}>
+                      <a href={`/traders/${t.address}`} className="mono" style={{ textDecoration: "none" }} title={t.address}>
                         {shortAddress(t.address)}
                       </a>
                     </td>
@@ -207,7 +315,7 @@ export function TopTradersClient({ traders }: { traders: TopTrader[] }) {
                       <div style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
                         <span
                           style={{
-                            color: tab === "pnl" ? (isPositive ? "var(--green)" : "var(--red)") : "inherit",
+                            color: tab === "pnl" ? (isPositive ? "var(--positive)" : "var(--negative)") : "inherit",
                             fontWeight: 700,
                           }}
                         >
@@ -215,17 +323,20 @@ export function TopTradersClient({ traders }: { traders: TopTrader[] }) {
                             ? formatPercent(t.roi)
                             : tab === "active"
                               ? t.totalPositions.toLocaleString()
-                              : formatUsd(getMetricValue(t, tab))}
+                              : formatUsd(metricValue)}
                         </span>
                         {tab === "pnl" && <PnlBar value={t.totalPnlUsd} maxAbs={maxPnl} />}
                       </div>
+                    </td>
+                    <td className={`numeric mono ${t.unrealizedPnlUsd > 0 ? "positive" : t.unrealizedPnlUsd < 0 ? "negative" : ""}`}>
+                      {formatUsd(t.unrealizedPnlUsd)}
                     </td>
                     <td className={`numeric mono ${t.realizedPnlUsd > 0 ? "positive" : t.realizedPnlUsd < 0 ? "negative" : ""}`}>
                       {t.closedPositions > 0 ? formatUsd(t.realizedPnlUsd) : <span className="muted">n/a</span>}
                     </td>
                     <td className="numeric">
                       {t.closedPositions > 0 ? (
-                        <span style={{ color: t.winRate >= 0.6 ? "var(--green)" : t.winRate >= 0.3 ? "var(--amber)" : "var(--red)", fontWeight: 700 }}>
+                        <span style={{ color: t.winRate >= 0.6 ? "var(--positive)" : t.winRate >= 0.3 ? "var(--warning)" : "var(--negative)", fontWeight: 700 }}>
                           {formatPercent(t.winRate)}
                         </span>
                       ) : (
