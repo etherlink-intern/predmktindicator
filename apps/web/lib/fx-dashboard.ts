@@ -603,10 +603,13 @@ export async function getDashboardData(): Promise<DashboardData> {
               side,
               owner,
               count(*)::int as open_position_count,
-              (
+              case when side = 'short' then (
                 sum(coalesce(ui_entry_price_usd, fallback_entry_price_usd) * notional_usd)
                 / nullif(sum(notional_usd) filter (where coalesce(ui_entry_price_usd, fallback_entry_price_usd) is not null), 0)
-              ) as weighted_average_entry_price_usd
+              ) else (
+                sum(fallback_entry_price_usd * notional_usd)
+                / nullif(sum(notional_usd) filter (where fallback_entry_price_usd is not null), 0)
+              ) end as weighted_average_entry_price_usd
             from base_positions
             where notional_usd > 0
             group by instrument, side, owner
@@ -616,11 +619,17 @@ export async function getDashboardData(): Promise<DashboardData> {
               p.side,
               p.owner,
               p.token_id,
-              coalesce(
-                p.ui_entry_price_usd,
-                case when w.open_position_count > 1 then w.weighted_average_entry_price_usd end,
-                p.fallback_entry_price_usd
-              ) as avg_entry_price_usd,
+              case
+                when p.side = 'short' then coalesce(
+                  p.ui_entry_price_usd,
+                  case when w.open_position_count > 1 then w.weighted_average_entry_price_usd end,
+                  p.fallback_entry_price_usd
+                )
+                else coalesce(
+                  case when w.open_position_count > 1 then w.weighted_average_entry_price_usd end,
+                  p.fallback_entry_price_usd
+                )
+              end as avg_entry_price_usd,
               p.notional_usd
             from base_positions p
             left join wallet_side_average w
