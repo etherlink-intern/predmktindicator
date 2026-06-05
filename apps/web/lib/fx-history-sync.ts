@@ -43,6 +43,7 @@ type OfficialPosition = {
   timestamp?: string | null;
   targetLeverage?: string | null;
   orders?: OfficialOrder[];
+  latestOrders?: OfficialOrder[];
 };
 
 type OfficialOrder = {
@@ -509,6 +510,27 @@ const OFFICIAL_POSITION_QUERY = `
         positionDebtIndex
         tickMovement { price type typeLogIndex }
       }
+      latestOrders: orders(first: 1000, orderBy: blockNumber, orderDirection: desc) {
+        deltaColls
+        deltaDebts
+        execPrice
+        id
+        logIndex
+        positionColls
+        positionDebts
+        oldPositionColls
+        oldPositionDebts
+        price
+        priceRate
+        protocolFees
+        type
+        hash
+        timestamp
+        blockNumber
+        positionCollIndex
+        positionDebtIndex
+        tickMovement { price type typeLogIndex }
+      }
     }
   }
 `;
@@ -548,39 +570,38 @@ async function syncOfficialFxOrders(client: Client) {
 
   for (const pool of OFFICIAL_POOLS) {
     const currentIds = await client.query<{ token_id: string }>(
-      pool.side === "short"
-        ? `with candidate_ids as (
-             select token_id::numeric as token_id
-             from public.fx_current_positions
-             where lower(pool_address) = $1
-             union
-             select distinct position_id as token_id
-             from public.fx_position_cashflows
-             where lower(pool_address) = $1
-               and position_id is not null
-               and block_timestamp >= now() - interval '14 days'
-             ${hasPositionPnl ? `union
-             select position_id as token_id
-             from public.fx_position_pnl
-             where lower(pool_address) = $1
-               and (ui_last_order_block is null or last_cashflow_block > ui_last_order_block)` : ``}
-           )
-           select token_id::text
-           from candidate_ids
-           order by token_id`
-        : `select p.token_id::text
-           from public.fx_current_positions p
-           where lower(p.pool_address) = $1
-             and (
-               p.entry_price_raw is null
-               or not exists (
-                 select 1
-                 from public.fx_official_position_orders o
-                 where lower(o.pool_address) = lower(p.pool_address)
-                   and o.position_id = p.token_id
-               )
+      `with candidate_ids as (
+         select token_id::numeric as token_id
+         from public.fx_current_positions
+         where lower(pool_address) = $1
+         union
+         select distinct position_id as token_id
+         from public.fx_position_cashflows
+         where lower(pool_address) = $1
+           and position_id is not null
+           and block_timestamp >= now() - interval '14 days'
+         ${hasPositionPnl ? `union
+         select position_id as token_id
+         from public.fx_position_pnl
+         where lower(pool_address) = $1
+           and (ui_last_order_block is null or last_cashflow_block > ui_last_order_block)` : ``}
+         union
+         select p.token_id::numeric as token_id
+         from public.fx_current_positions p
+         where lower(p.pool_address) = $1
+           and (
+             p.entry_price_raw is null
+             or not exists (
+               select 1
+               from public.fx_official_position_orders o
+               where lower(o.pool_address) = lower(p.pool_address)
+                 and o.position_id = p.token_id
              )
-           order by p.token_id`,
+           )
+       )
+       select token_id::text
+       from candidate_ids
+       order by token_id`,
       [pool.poolAddress],
     );
     const ids = currentIds.rows.map((row) => row.token_id);
@@ -633,7 +654,17 @@ async function syncOfficialFxOrders(client: Client) {
           await upsertKnownWallet(client, position.owner, "fx_official_subgraph");
         }
 
-        for (const order of position.orders ?? []) {
+        const mergedOrders = new Map<string, OfficialOrder>();
+        for (const order of [...(position.orders ?? []), ...(position.latestOrders ?? [])]) {
+          mergedOrders.set(order.id, order);
+        }
+        const orderedOfficialOrders = [...mergedOrders.values()].sort((a, b) => {
+          const blockDelta = toFiniteNumber(a.blockNumber) - toFiniteNumber(b.blockNumber);
+          if (blockDelta !== 0) return blockDelta;
+          return toFiniteNumber(a.tickMovement?.typeLogIndex ?? a.logIndex) - toFiniteNumber(b.tickMovement?.typeLogIndex ?? b.logIndex);
+        });
+
+        for (const order of orderedOfficialOrders) {
           await client.query(
             `insert into public.fx_official_position_orders(
               id, pool_address, position_id, order_type, delta_colls_raw, delta_debts_raw, exec_price_raw,
@@ -791,10 +822,11 @@ function orderContribution(pool: OfficialPoolConfig, row: Record<string, unknown
 }
 
 function orderDeltaSize(pool: OfficialPoolConfig, row: Record<string, unknown>) {
+  const rate = toFiniteNumber(row.price_rate_raw) / 1e18;
   if (pool.side === "short") {
-    return (toFiniteNumber(row.delta_debts_raw) / pool.precision) * (toFiniteNumber(row.price_rate_raw) / 1e18);
+    return (toFiniteNumber(row.delta_debts_raw) / pool.precision) * rate;
   }
-  return toFiniteNumber(row.delta_colls_raw) / pool.precision;
+  return (toFiniteNumber(row.delta_colls_raw) / pool.precision) * rate;
 }
 
 function realizedPnlFromOfficialOrders(pool: OfficialPoolConfig, orders: Record<string, unknown>[]) {
