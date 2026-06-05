@@ -724,7 +724,7 @@ export async function getDashboardData(): Promise<DashboardData> {
         client.query<{ instrument: string; oracle_price: number }>(`
           select distinct on (case when pool_name like '%BTC%' then 'BTC' else 'ETH' end)
             case when pool_name like '%BTC%' then 'BTC' else 'ETH' end as instrument,
-            oracle_price::float8 as "oraclePrice"
+            oracle_price::float8 as oracle_price
           from public.fx_current_positions
           where oracle_price > 0
           order by case when pool_name like '%BTC%' then 'BTC' else 'ETH' end, pool_name
@@ -782,8 +782,8 @@ export async function getDashboardData(): Promise<DashboardData> {
           btc: groupBucketsBySize(averageEntryBookResult.rows.map(mapAverageEntryPriceBucket).filter((bucket) => bucket.instrument === "BTC"))
         },
         oraclePrices: {
-          eth: toNumber((oraclePricesResult.rows as { instrument: string; oraclePrice: number }[]).find(r => r.instrument === 'ETH')?.oraclePrice),
-          btc: toNumber((oraclePricesResult.rows as { instrument: string; oraclePrice: number }[]).find(r => r.instrument === 'BTC')?.oraclePrice)
+          eth: toNumber((oraclePricesResult.rows as any[]).find((r: any) => r.instrument === 'ETH')?.oracle_price),
+          btc: toNumber((oraclePricesResult.rows as any[]).find((r: any) => r.instrument === 'BTC')?.oracle_price)
         },
         traders: tradersResult.rows.map(mapTrader),
         walletMaintenance
