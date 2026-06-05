@@ -52,24 +52,20 @@ export function AverageEntryPriceBook({
   const tableWrapRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!tableWrapRef.current || !currentPrice) return;
+    if (!tableWrapRef.current || !currentPrice || rows.length === 0) return;
     const container = tableWrapRef.current;
-    const rows = container.querySelectorAll(".avg-entry-row:not(.avg-entry-head)");
-    for (const row of rows) {
-      const bucketEl = row.querySelector(".avg-entry-bucket");
-      if (!bucketEl) continue;
-      const text = bucketEl.textContent || "";
-      const match = text.match(/[\d,.]+/g);
-      if (match && match.length >= 2) {
-        const low = parseFloat(match[0].replace(/,/g, ""));
-        const high = parseFloat(match[1].replace(/,/g, ""));
-        if (currentPrice >= low && currentPrice <= high) {
-          row.scrollIntoView({ block: "center", behavior: "smooth" });
-          return;
+    const rowEls = container.querySelectorAll(".avg-entry-row:not(.avg-entry-head)");
+    for (let i = 0; i < rows.length; i++) {
+      const bucket = rows[i];
+      if (currentPrice >= bucket.bucketLowUsd && currentPrice <= bucket.bucketHighUsd) {
+        const targetEl = rowEls[i];
+        if (targetEl) {
+          targetEl.scrollIntoView({ block: "center", behavior: "smooth" });
         }
+        return;
       }
     }
-  }, [currentPrice, bucketSize]);
+  }, [currentPrice, bucketSize, rows]);
 
   return (
     <article
