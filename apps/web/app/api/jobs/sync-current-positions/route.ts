@@ -55,7 +55,7 @@ async function ethCall(to: string, data: string, timeout = 30): Promise<string> 
   throw new Error("eth_call failed after retries");
 }
 
-async function batchEthCall(calls: Array<{ id: string; to: string; data: string }>, timeout = 90): Promise<Map<string, string | null>> {
+async function batchEthCall(calls: Array<{ id: string; to: string; data: string }>, timeout = 300): Promise<Map<string, string | null>> {
   const results = new Map<string, string | null>();
   const batchSize = 10;
   for (let i = 0; i < calls.length; i += batchSize) {
