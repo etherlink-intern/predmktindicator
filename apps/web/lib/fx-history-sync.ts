@@ -1084,7 +1084,7 @@ export async function computeFxPositionPnl(client: Client) {
             else c.fee_raw
           end
         ), 0) as total_fees_raw,
-        coalesce(sum(c.collateral_out_raw - c.collateral_in_raw - c.fee_raw), 0) as realized_pnl_raw,
+        0::numeric as realized_pnl_raw,
         e.entry_price_raw,
         min(c.block_number)::bigint as first_cashflow_block,
         max(c.block_number)::bigint as last_cashflow_block

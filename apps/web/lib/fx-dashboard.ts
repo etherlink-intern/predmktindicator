@@ -455,7 +455,7 @@ const traderSelect = `
     coalesce(max(fw.fees_usd), 0)::float8 as "fundingWindowFeesUsd",
     coalesce(max(fw.events), 0)::int as "fundingWindowFeeEvents",
     coalesce(max(fw.positions), 0)::int as "fundingWindowFeePositions",
-    coalesce(bool_or(entry_price_raw is not null and entry_price_raw > 0), false) or coalesce(bool_or(realized_pnl_raw != 0), false) as "hasPositionHistory"
+    coalesce(bool_or(entry_price_raw is not null and entry_price_raw > 0), false) or coalesce(bool_or(coalesce(ui_unrealized_pnl_usd, 0) != 0), false) as "hasPositionHistory"
   from public.fx_current_positions
   left join (${fundingFeesByOwnerSql}) fw on fw.owner = lower(public.fx_current_positions.owner)
 `;
@@ -1291,7 +1291,7 @@ export async function getTopTraders(): Promise<TopTrader[]> {
           ), 0) as realized_pnl_usd,
           coalesce(sum(pp.total_fees_raw), 0) as total_fees_raw,
           count(*)::int as closed_positions,
-          count(*) filter (where pp.realized_pnl_raw > 0)::int as winning_positions
+          count(*) filter (where coalesce(pp.ui_realized_pnl_usd, 0) > 0)::int as winning_positions
         from pnl_owner_positions op
         join public.fx_position_pnl pp
           on lower(pp.pool_address) = op.pool_address
