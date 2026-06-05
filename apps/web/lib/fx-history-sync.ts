@@ -786,7 +786,7 @@ async function updateUiPnlFromOfficialOrders(client: Client) {
 
   let updated = 0;
   const resetTypes = new Set(["Close"]);
-  const nonEntryTypes = new Set(["Reduce", "TickMovement", "Rebalance", "Liquidate", "CollIndexChanged", "DebtIndexChanged", "Repay"]);
+  const nonEntryTypes = new Set(["Reduce", "TickMovement", "Rebalance", "Liquidate", "CollIndexChanged", "DebtIndexChanged", "Repay", "WithdrawRepay"]);
 
   for (const current of currentRows.rows) {
     const poolAddress = String(current.pool_address).toLowerCase();
