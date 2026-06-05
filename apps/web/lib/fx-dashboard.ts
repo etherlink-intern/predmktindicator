@@ -341,11 +341,11 @@ const fundingFeeEventsSql = `
   fee_events as (
     select
       coalesce(
-        nullif(lower(p.owner), ''),
-        nullif(lower(o.owner), ''),
-        nullif(lower(o.real_owner), ''),
-        nullif(lower(c.user_address), ''),
-        nullif(lower(c.recipient_address), '')
+        nullif(nullif(lower(p.owner), ''), 'null'),
+        nullif(nullif(lower(o.owner), ''), 'null'),
+        nullif(nullif(lower(o.real_owner), ''), 'null'),
+        nullif(nullif(lower(c.user_address), ''), 'null'),
+        nullif(nullif(lower(c.recipient_address), ''), 'null')
       ) as owner,
       lower(c.pool_address) as pool_address,
       c.position_id,
@@ -381,7 +381,7 @@ const fundingFeesByOwnerSql = `
     count(*)::int as events,
     count(distinct (pool_address, position_id))::int as positions
   from fee_events
-  where owner is not null
+  where lower(owner) ~ '^0x[a-f0-9]{40}$'
     and fee_raw > 0
   group by owner
 `;
@@ -506,7 +506,7 @@ export async function getDashboardData(): Promise<DashboardData> {
               coalesce(sum(fee_raw / 1000000000000000000) filter (where fee_raw > 0), 0)::float8 as funding_window_fees_usd,
               count(*) filter (where fee_raw > 0)::text as funding_window_fee_events,
               count(distinct (pool_address, position_id)) filter (where fee_raw > 0)::text as funding_window_fee_positions,
-              count(distinct owner) filter (where owner is not null and fee_raw > 0)::text as funding_window_wallets
+              count(distinct owner) filter (where lower(owner) ~ '^0x[a-f0-9]{40}$' and fee_raw > 0)::text as funding_window_wallets
             from funding_fee_events
           ), position_totals as (
             select
@@ -908,19 +908,19 @@ export async function getTraderProfile(address: string): Promise<TraderProfile |
            ), pnl_owner_positions as (
              select distinct lower(owner) as owner, lower(pool_address) as pool_address, position_id
              from public.fx_official_positions
-             where owner is not null
+             where lower(owner) ~ '^0x[a-f0-9]{40}$'
              union
              select distinct lower(real_owner) as owner, lower(pool_address) as pool_address, position_id
              from public.fx_official_positions
-             where real_owner is not null
+             where lower(real_owner) ~ '^0x[a-f0-9]{40}$'
              union
              select distinct lower(user_address) as owner, lower(pool_address) as pool_address, position_id
              from public.fx_position_cashflows
-             where user_address is not null and position_id is not null
+             where lower(user_address) ~ '^0x[a-f0-9]{40}$' and position_id is not null
              union
              select distinct lower(recipient_address) as owner, lower(pool_address) as pool_address, position_id
              from public.fx_position_cashflows
-             where recipient_address is not null and position_id is not null
+             where lower(recipient_address) ~ '^0x[a-f0-9]{40}$' and position_id is not null
            )
            select
              op.owner,
@@ -1247,7 +1247,7 @@ export async function getTopTraders(): Promise<TopTrader[]> {
           max(debt_ratio) as max_debt_ratio,
           coalesce(sum(equity_usd), 0) as equity_usd
         from public.fx_current_positions
-        where owner is not null
+        where lower(owner) ~ '^0x[a-f0-9]{40}$'
         group by lower(owner)
       ),
       pool_meta as (
@@ -1261,19 +1261,19 @@ export async function getTopTraders(): Promise<TopTrader[]> {
       pnl_owner_positions as (
         select distinct lower(owner) as owner, lower(pool_address) as pool_address, position_id
         from public.fx_official_positions
-        where owner is not null
+        where lower(owner) ~ '^0x[a-f0-9]{40}$'
         union
         select distinct lower(real_owner) as owner, lower(pool_address) as pool_address, position_id
         from public.fx_official_positions
-        where real_owner is not null
+        where lower(real_owner) ~ '^0x[a-f0-9]{40}$'
         union
         select distinct lower(user_address) as owner, lower(pool_address) as pool_address, position_id
         from public.fx_position_cashflows
-        where user_address is not null and position_id is not null
+        where lower(user_address) ~ '^0x[a-f0-9]{40}$' and position_id is not null
         union
         select distinct lower(recipient_address) as owner, lower(pool_address) as pool_address, position_id
         from public.fx_position_cashflows
-        where recipient_address is not null and position_id is not null
+        where lower(recipient_address) ~ '^0x[a-f0-9]{40}$' and position_id is not null
       ),
       closed_trader as (
         select
@@ -1483,7 +1483,7 @@ const capitalFlowEventsCte = `
     order by lower(pool_address), updated_at desc nulls last
   ), base as (
     select
-      coalesce(nullif(lower(p.owner), ''), nullif(lower(o.owner), ''), nullif(lower(o.real_owner), ''), nullif(lower(c.user_address), ''), nullif(lower(c.recipient_address), '')) as wallet,
+      coalesce(nullif(nullif(lower(p.owner), ''), 'null'), nullif(nullif(lower(o.owner), ''), 'null'), nullif(nullif(lower(o.real_owner), ''), 'null'), nullif(nullif(lower(c.user_address), ''), 'null'), nullif(nullif(lower(c.recipient_address), ''), 'null')) as wallet,
       lower(c.pool_address) as pool_address,
       coalesce(p.pool_name, o.pool_name, m.pool_name, c.pool_address) as pool_name,
       coalesce(p.side, o.side, m.side, 'unknown') as side,
@@ -1690,7 +1690,7 @@ export async function getConvictionPositions(limit = 12): Promise<ConvictionPosi
             end
           )::float8 as "pnlUsd"
         from public.fx_current_positions
-        where owner is not null
+        where lower(owner) ~ '^0x[a-f0-9]{40}$'
         order by (case when side = 'long' then coalesce(collateral_value_usd, 0) else coalesce(debt_value_usd, 0) end) * greatest(coalesce(debt_ratio, 0), 0.1) desc
         limit $1`, [limit]);
       return result.rows.map((row) => ({
