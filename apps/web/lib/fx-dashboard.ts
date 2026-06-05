@@ -782,8 +782,8 @@ export async function getDashboardData(): Promise<DashboardData> {
           btc: groupBucketsBySize(averageEntryBookResult.rows.map(mapAverageEntryPriceBucket).filter((bucket) => bucket.instrument === "BTC"))
         },
         oraclePrices: {
-          eth: toNumber(oraclePricesResult.rows.find(r => r.instrument === 'ETH')?.oraclePrice),
-          btc: toNumber(oraclePricesResult.rows.find(r => r.instrument === 'BTC')?.oraclePrice)
+          eth: toNumber((oraclePricesResult.rows as { instrument: string; oraclePrice: number }[]).find(r => r.instrument === 'ETH')?.oraclePrice),
+          btc: toNumber((oraclePricesResult.rows as { instrument: string; oraclePrice: number }[]).find(r => r.instrument === 'BTC')?.oraclePrice)
         },
         traders: tradersResult.rows.map(mapTrader),
         walletMaintenance
