@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { AverageEntryPriceBucket } from "../lib/fx-dashboard";
 
 const compactFormatter = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 });
@@ -28,10 +28,12 @@ export function AverageEntryPriceBook({
   label,
   bucketsBySize,
   accent,
+  currentPrice,
 }: {
   label: "ETH" | "BTC";
   bucketsBySize: Record<number, AverageEntryPriceBucket[]>;
   accent: string;
+  currentPrice: number;
 }) {
   const sizes = Object.keys(bucketsBySize)
     .map(Number)
@@ -47,6 +49,27 @@ export function AverageEntryPriceBook({
   const totalShort = rows.reduce((sum, bucket) => sum + bucket.shortNotionalUsd, 0);
   const maxLong = Math.max(1, ...rows.map((b) => b.longNotionalUsd));
   const maxShort = Math.max(1, ...rows.map((b) => b.shortNotionalUsd));
+  const tableWrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!tableWrapRef.current || !currentPrice) return;
+    const container = tableWrapRef.current;
+    const rows = container.querySelectorAll(".avg-entry-row:not(.avg-entry-head)");
+    for (const row of rows) {
+      const bucketEl = row.querySelector(".avg-entry-bucket");
+      if (!bucketEl) continue;
+      const text = bucketEl.textContent || "";
+      const match = text.match(/[\d,.]+/g);
+      if (match && match.length >= 2) {
+        const low = parseFloat(match[0].replace(/,/g, ""));
+        const high = parseFloat(match[1].replace(/,/g, ""));
+        if (currentPrice >= low && currentPrice <= high) {
+          row.scrollIntoView({ block: "center", behavior: "smooth" });
+          return;
+        }
+      }
+    }
+  }, [currentPrice, bucketSize]);
 
   return (
     <article
@@ -84,7 +107,7 @@ export function AverageEntryPriceBook({
       {rows.length === 0 ? (
         <p className="muted small">No average entry price data yet.</p>
       ) : (
-        <div className="avg-entry-table-wrap">
+        <div className="avg-entry-table-wrap" ref={tableWrapRef}>
           <div
             className="avg-entry-ladder"
             role="table"

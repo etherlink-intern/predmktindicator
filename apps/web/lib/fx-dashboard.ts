@@ -151,6 +151,10 @@ export type DashboardData = {
     eth: Record<number, AverageEntryPriceBucket[]>;
     btc: Record<number, AverageEntryPriceBucket[]>;
   };
+  oraclePrices: {
+    eth: number;
+    btc: number;
+  };
   traders: TraderSummary[];
   walletMaintenance: WalletMaintenanceSummary;
 };
@@ -186,6 +190,7 @@ const emptyDashboard: DashboardData = {
   },
   pools: [],
   averageEntryBook: { eth: {}, btc: {} },
+  oraclePrices: { eth: 0, btc: 0 },
   traders: [],
   walletMaintenance: emptyWalletMaintenanceSummary
 };
@@ -462,7 +467,7 @@ export async function getDashboardData(): Promise<DashboardData> {
         return emptyDashboard;
       }
 
-      const [generatedAt, walletMaintenance, totalsResult, poolsResult, averageEntryBookResult, tradersResult] = await Promise.all([
+      const [generatedAt, walletMaintenance, totalsResult, poolsResult, averageEntryBookResult, tradersResult, oraclePricesResult] = await Promise.all([
         latestSnapshotTime(client),
         getWalletMaintenanceSummary(client),
         client.query<{
@@ -715,6 +720,14 @@ export async function getDashboardData(): Promise<DashboardData> {
           ${traderSelect}
           group by public.fx_current_positions.owner
           order by "notionalValueUsd" desc, positions desc, owner asc
+        `),
+        client.query<{ instrument: string; oracle_price: number }>(`
+          select distinct on (case when pool_name like '%BTC%' then 'BTC' else 'ETH' end)
+            case when pool_name like '%BTC%' then 'BTC' else 'ETH' end as instrument,
+            oracle_price::float8 as "oraclePrice"
+          from public.fx_current_positions
+          where oracle_price > 0
+          order by case when pool_name like '%BTC%' then 'BTC' else 'ETH' end, pool_name
         `)
       ]);
 
@@ -767,6 +780,10 @@ export async function getDashboardData(): Promise<DashboardData> {
         averageEntryBook: {
           eth: groupBucketsBySize(averageEntryBookResult.rows.map(mapAverageEntryPriceBucket).filter((bucket) => bucket.instrument === "ETH")),
           btc: groupBucketsBySize(averageEntryBookResult.rows.map(mapAverageEntryPriceBucket).filter((bucket) => bucket.instrument === "BTC"))
+        },
+        oraclePrices: {
+          eth: toNumber(oraclePricesResult.rows.find(r => r.instrument === 'ETH')?.oraclePrice),
+          btc: toNumber(oraclePricesResult.rows.find(r => r.instrument === 'BTC')?.oraclePrice)
         },
         traders: tradersResult.rows.map(mapTrader),
         walletMaintenance
