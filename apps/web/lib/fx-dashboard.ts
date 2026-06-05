@@ -424,7 +424,8 @@ const traderSelect = `
         when side = 'long' and entry_price_raw is not null and entry_price_raw > 0
           then collateral_value_usd * (oracle_price * 1000000000000000000 / entry_price_raw - 1)
         when side = 'short' and entry_price_raw is not null and entry_price_raw > 0
-          then debt_value_usd * (oracle_price * 1000000000000000000 / entry_price_raw - 1)
+            and oracle_price is not null and oracle_price > 0
+          then debt_value_usd * (1 - entry_price_raw::numeric / (oracle_price * 1000000000000000000))
         else 0
       end
     ), 0)::float8 as "unrealizedPnlUsd",
@@ -435,7 +436,8 @@ const traderSelect = `
         when side = 'long' and entry_price_raw is not null and entry_price_raw > 0
           then collateral_value_usd * (oracle_price * 1000000000000000000 / entry_price_raw - 1)
         when side = 'short' and entry_price_raw is not null and entry_price_raw > 0
-          then debt_value_usd * (oracle_price * 1000000000000000000 / entry_price_raw - 1)
+            and oracle_price is not null and oracle_price > 0
+          then debt_value_usd * (1 - entry_price_raw::numeric / (oracle_price * 1000000000000000000))
         else 0
       end
     ), 0)
@@ -831,7 +833,20 @@ export async function getPositionProfile(id: string): Promise<PositionSummary | 
                else 0
              end
            )::float8 as "entryPriceUsd",
-           coalesce(ui_unrealized_pnl_usd, 0)::float8 as "unrealizedPnlUsd",
+           coalesce(
+             case
+               when side = 'short' then ui_unrealized_pnl_usd
+               else null
+             end,
+             case
+               when side = 'long' and entry_price_raw is not null and entry_price_raw > 0
+                 then collateral_value_usd * (oracle_price * 1000000000000000000 / entry_price_raw - 1)
+               when side = 'short' and entry_price_raw is not null and entry_price_raw > 0
+                   and oracle_price is not null and oracle_price > 0
+                 then debt_value_usd * (1 - entry_price_raw::numeric / (oracle_price * 1000000000000000000))
+               else 0
+             end
+           )::float8 as "unrealizedPnlUsd",
            coalesce(collateral_value_usd, 0)::float8 as "collateralValueUsd",
            coalesce(debt_value_usd, 0)::float8 as "debtValueUsd",
            coalesce(equity_usd, 0)::float8 as "equityUsd",
@@ -905,7 +920,8 @@ export async function getTraderProfile(address: string): Promise<TraderProfile |
                  when side = 'long' and entry_price_raw is not null and entry_price_raw > 0
                    then collateral_value_usd * (oracle_price * 1000000000000000000 / entry_price_raw - 1)
                  when side = 'short' and entry_price_raw is not null and entry_price_raw > 0
-                   then debt_value_usd * (oracle_price * 1000000000000000000 / entry_price_raw - 1)
+                     and oracle_price is not null and oracle_price > 0
+                   then debt_value_usd * (1 - entry_price_raw::numeric / (oracle_price * 1000000000000000000))
                  else 0
                end
              )::float8 as "unrealizedPnlUsd",
@@ -1117,7 +1133,8 @@ export async function getTopTraders(): Promise<TopTrader[]> {
               when side = 'long' and entry_price_raw is not null and entry_price_raw > 0
                 then collateral_value_usd * (oracle_price * 1000000000000000000 / entry_price_raw - 1)
               when side = 'short' and entry_price_raw is not null and entry_price_raw > 0
-                then debt_value_usd * (oracle_price * 1000000000000000000 / entry_price_raw - 1)
+                  and oracle_price is not null and oracle_price > 0
+                then debt_value_usd * (1 - entry_price_raw::numeric / (oracle_price * 1000000000000000000))
               else 0
             end
           ), 0) as unrealized_pnl_usd,
