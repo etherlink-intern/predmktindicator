@@ -1076,3 +1076,155 @@ export function displayPool(poolName: string) {
   const side = poolName.toLowerCase().includes("short") ? "Short" : "Long";
   return `${instrument} ${side}`;
 }
+
+export type TopTrader = {
+  address: string;
+  rank: number;
+  totalPnlUsd: number;
+  unrealizedPnlUsd: number;
+  realizedPnlUsd: number;
+  notionalUsd: number;
+  openPositions: number;
+  closedPositions: number;
+  winRate: number;
+  maxDebtRatio: number;
+  equityUsd: number;
+  feesUsd: number;
+  score: number;
+};
+
+export async function getTopTraders(): Promise<TopTrader[]> {
+  if (!getDatabaseUrl()) return [];
+
+  return withClient(async (client) => {
+    if (!(await hasCurrentPositionsTable(client)) || !(await tableExists(client, "public.fx_position_pnl"))) {
+      return [];
+    }
+
+    const result = await client.query<Record<string, unknown>>(`
+      with current_trader as (
+        select
+          lower(owner) as owner,
+          count(*)::int as open_positions,
+          coalesce(
+            sum(collateral_value_usd) filter (where side = 'long'), 0
+          ) + coalesce(
+            sum(debt_value_usd) filter (where side = 'short'), 0
+          ) as notional_usd,
+          coalesce(sum(
+            case
+              when side = 'long' and entry_price_raw is not null and entry_price_raw > 0
+                then collateral_value_usd * (oracle_price * 1000000000000000000 / entry_price_raw - 1)
+              when side = 'short' and entry_price_raw is not null and entry_price_raw > 0
+                then debt_value_usd * (oracle_price * 1000000000000000000 / entry_price_raw - 1)
+              else 0
+            end
+          ), 0) as unrealized_pnl_usd,
+          max(debt_ratio) as max_debt_ratio,
+          coalesce(sum(equity_usd), 0) as equity_usd,
+          coalesce(sum(collateral_value_usd), 0) as collateral_value_usd
+        from public.fx_current_positions
+        where entry_price_raw is not null
+        group by lower(owner)
+      ),
+      closed_trader as (
+        select
+          lower(po.owner) as owner,
+          coalesce(sum(pp.realized_pnl_raw), 0) as realized_pnl_raw,
+          coalesce(sum(pp.total_fees_raw), 0) as total_fees_raw,
+          count(*)::int as closed_positions,
+          count(*) filter (where pp.realized_pnl_raw > 0)::int as winning_positions
+        from public.fx_position_pnl pp
+        join public.fx_official_positions po
+          on lower(po.pool_address) = lower(pp.pool_address)
+          and po.position_id = pp.position_id
+        group by lower(po.owner)
+      ),
+      combined as (
+        select
+          coalesce(ct.owner, cl.owner) as owner,
+          coalesce(ct.open_positions, 0) as open_positions,
+          coalesce(cl.closed_positions, 0) as closed_positions,
+          coalesce(ct.notional_usd, 0) as notional_usd,
+          coalesce(ct.unrealized_pnl_usd, 0) as unrealized_pnl_usd,
+          coalesce(cl.realized_pnl_raw, 0) as realized_pnl_raw,
+          coalesce(cl.total_fees_raw, 0) as total_fees_raw,
+          coalesce(cl.winning_positions, 0) as winning_positions,
+          coalesce(ct.max_debt_ratio, 0) as max_debt_ratio,
+          coalesce(ct.equity_usd, 0) as equity_usd
+        from current_trader ct
+        full outer join closed_trader cl on ct.owner = cl.owner
+      )
+      select
+        owner,
+        open_positions::int as open_positions,
+        closed_positions::int as closed_positions,
+        notional_usd::float8 as notional_usd,
+        unrealized_pnl_usd::float8 as unrealized_pnl_usd,
+        realized_pnl_raw::numeric as realized_pnl_raw,
+        total_fees_raw::numeric as total_fees_raw,
+        winning_positions::int as winning_positions,
+        max_debt_ratio::float8 as max_debt_ratio,
+        equity_usd::float8 as equity_usd
+      from combined
+      where notional_usd > 1000 or closed_positions > 0
+      order by notional_usd desc
+      limit 50
+    `);
+
+    // Get WBTC oracle price for realized PnL conversion
+    const oracleResult = await client.query<{ oracle_price: number }>(`
+      select max(oracle_price)::float8 as oracle_price
+      from public.fx_current_positions
+      where pool_name = 'WBTCLongPool' and oracle_price > 0
+    `);
+    const btcPrice = Number(oracleResult.rows[0]?.oracle_price ?? 0);
+
+    const traders: TopTrader[] = result.rows.map((row: any) => {
+      const unrealizedPnl = Number(row.unrealized_pnl_usd ?? 0);
+
+      // Convert realized_pnl_raw to USD (stored as raw numeric, divide by 1e18)
+      const realizedPnlRaw = row.realized_pnl_raw ? Number(row.realized_pnl_raw) : 0;
+      const realizedPnlUsd = realizedPnlRaw / 1e18;
+
+      const feesRaw = row.total_fees_raw ? Number(row.total_fees_raw) : 0;
+      const feesUsd = feesRaw / 1e18;
+
+      const totalPnl = unrealizedPnl + realizedPnlUsd;
+      const closedPositions = Number(row.closed_positions ?? 0);
+      const winningPositions = Number(row.winning_positions ?? 0);
+      const winRate = closedPositions > 0 ? winningPositions / closedPositions : 0;
+      const maxDebtRatio = Number(row.max_debt_ratio ?? 0);
+
+      // Composite score: 40% PnL + 30% win rate + 20% total positions + 10% equity (capped risk)
+      const pnlScore = Math.tanh(totalPnl / 1000000); // Normalize to [-1, 1] with $1M scale
+      const posScore = Math.min(1, (Number(row.open_positions) + closedPositions) / 20);
+      const riskPenalty = Math.max(0, 1 - maxDebtRatio / 0.8); // Penalty for high leverage
+
+      const score = pnlScore * 0.4 + winRate * 0.3 + posScore * 0.2 + riskPenalty * 0.1;
+
+      return {
+        address: String(row.owner),
+        rank: 0,
+        totalPnlUsd: totalPnl,
+        unrealizedPnlUsd: unrealizedPnl,
+        realizedPnlUsd: realizedPnlUsd,
+        notionalUsd: Number(row.notional_usd ?? 0),
+        openPositions: Number(row.open_positions ?? 0),
+        closedPositions,
+        winRate,
+        maxDebtRatio,
+        equityUsd: Number(row.equity_usd ?? 0),
+        feesUsd,
+        score
+      };
+    });
+
+    // Sort by score descending and assign ranks
+    traders.sort((a, b) => b.score - a.score);
+    const top10 = traders.slice(0, 10);
+    top10.forEach((t, i) => { t.rank = i + 1; });
+
+    return top10;
+  });
+}
