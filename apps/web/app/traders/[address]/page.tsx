@@ -54,8 +54,9 @@ function formatDays(days: number | null) {
 }
 
 function leverageFor(position: { debtRatio: number; collateralValueUsd: number; debtValueUsd: number; equityUsd: number }) {
-  if (position.equityUsd > 0) return (position.collateralValueUsd + Math.max(0, position.debtValueUsd)) / position.equityUsd;
-  return position.debtRatio > 0 && position.debtRatio < 1 ? 1 / (1 - position.debtRatio) : 0;
+  if (position.debtRatio > 0 && position.debtRatio < 1) return 1 / (1 - position.debtRatio);
+  if (position.equityUsd > 0) return position.collateralValueUsd / position.equityUsd;
+  return 0;
 }
 
 export const dynamic = "force-dynamic";
