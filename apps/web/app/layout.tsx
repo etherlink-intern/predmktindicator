@@ -41,6 +41,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           <nav className="nav" aria-label="Primary navigation">
             <a href="/">Home</a>
             <a href="/leaderboard">Leaderboard</a>
+            <a href="/top-traders">Top Traders</a>
             <a href="/methodology">Methodology</a>
             <a href="/privacy">Privacy</a>
             <span className="nav-spacer" />
