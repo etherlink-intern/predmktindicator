@@ -144,12 +144,12 @@ export type DashboardData = {
     fundingWindowFeesUsd: number;
     fundingWindowFeeEvents: number;
     fundingWindowFeePositions: number;
-    fundingWindowWallets: number;
+    fundingWindowWallets: number
   };
   pools: PoolSummary[];
   averageEntryBook: {
-    eth: AverageEntryPriceBucket[];
-    btc: AverageEntryPriceBucket[];
+    eth: Record<number, AverageEntryPriceBucket[]>;
+    btc: Record<number, AverageEntryPriceBucket[]>;
   };
   traders: TraderSummary[];
   walletMaintenance: WalletMaintenanceSummary;
@@ -185,7 +185,7 @@ const emptyDashboard: DashboardData = {
     fundingWindowWallets: 0
   },
   pools: [],
-  averageEntryBook: { eth: [], btc: [] },
+  averageEntryBook: { eth: {}, btc: {} },
   traders: [],
   walletMaintenance: emptyWalletMaintenanceSummary
 };
@@ -294,6 +294,16 @@ function mapAverageEntryPriceBucket(row: Record<string, unknown>): AverageEntryP
     longTopWalletShare: toNumber(row.longTopWalletShare),
     shortTopWalletShare: toNumber(row.shortTopWalletShare)
   };
+}
+
+function groupBucketsBySize(buckets: AverageEntryPriceBucket[]): Record<number, AverageEntryPriceBucket[]> {
+  const grouped: Record<number, AverageEntryPriceBucket[]> = {};
+  for (const bucket of buckets) {
+    const size = bucket.bucketSizeUsd;
+    if (!grouped[size]) grouped[size] = [];
+    grouped[size].push(bucket);
+  }
+  return grouped;
 }
 
 
@@ -570,7 +580,6 @@ export async function getDashboardData(): Promise<DashboardData> {
               side,
               lower(owner) as owner,
               token_id,
-              case when collateral = 'WBTC' then 5000::numeric else 200::numeric end as bucket_size_usd,
               ui_entry_price_usd,
               case
                 when side = 'long' and entry_price_raw is not null and entry_price_raw > 0
@@ -607,7 +616,6 @@ export async function getDashboardData(): Promise<DashboardData> {
               p.side,
               p.owner,
               p.token_id,
-              p.bucket_size_usd,
               coalesce(
                 p.ui_entry_price_usd,
                 case when w.open_position_count > 1 then w.weighted_average_entry_price_usd end,
@@ -619,18 +627,29 @@ export async function getDashboardData(): Promise<DashboardData> {
               on w.instrument = p.instrument
               and w.side = p.side
               and w.owner = p.owner
+          ), sizes as (
+            select 50::numeric as bucket_size_usd, 'ETH' as instrument
+            union all select 100, 'ETH'
+            union all select 200, 'ETH'
+            union all select 500, 'ETH'
+            union all select 500, 'BTC'
+            union all select 1000, 'BTC'
+            union all select 2000, 'BTC'
+            union all select 5000, 'BTC'
           ), buckets as (
             select
-              instrument,
-              bucket_size_usd,
-              floor(avg_entry_price_usd / bucket_size_usd) * bucket_size_usd as bucket_low_usd,
-              side,
-              owner,
-              notional_usd
-            from positioned_entries
-            where avg_entry_price_usd is not null
-              and avg_entry_price_usd > 0
-              and notional_usd > 0
+              p.instrument,
+              s.bucket_size_usd,
+              floor(p.avg_entry_price_usd / s.bucket_size_usd) * s.bucket_size_usd as bucket_low_usd,
+              p.side,
+              p.owner,
+              p.notional_usd
+            from positioned_entries p
+            cross join sizes s
+            where s.instrument = p.instrument
+              and p.avg_entry_price_usd is not null
+              and p.avg_entry_price_usd > 0
+              and p.notional_usd > 0
           ), owner_bucket_side as (
             select
               instrument,
@@ -666,14 +685,6 @@ export async function getDashboardData(): Promise<DashboardData> {
               ) as short_top_wallet_share
             from owner_bucket_side
             group by instrument, bucket_size_usd, bucket_low_usd
-          ), ranked as (
-            select
-              *,
-              row_number() over (
-                partition by instrument
-                order by greatest(long_notional_usd, short_notional_usd) desc, bucket_low_usd desc
-              ) as relevance_rank
-            from grouped
           )
           select
             instrument,
@@ -688,9 +699,8 @@ export async function getDashboardData(): Promise<DashboardData> {
             short_owners::int as "shortOwners",
             long_top_wallet_share::float8 as "longTopWalletShare",
             short_top_wallet_share::float8 as "shortTopWalletShare"
-          from ranked
-          where relevance_rank <= 14
-          order by instrument asc, bucket_low_usd desc
+          from grouped
+          order by instrument asc, bucket_size_usd asc, bucket_low_usd desc
         `),
         client.query<Record<string, unknown>>(`
           ${traderSelect}
@@ -746,8 +756,8 @@ export async function getDashboardData(): Promise<DashboardData> {
           avgDebtRatio: toNumber(row.avg_debt_ratio)
         })),
         averageEntryBook: {
-          eth: averageEntryBookResult.rows.map(mapAverageEntryPriceBucket).filter((bucket) => bucket.instrument === "ETH"),
-          btc: averageEntryBookResult.rows.map(mapAverageEntryPriceBucket).filter((bucket) => bucket.instrument === "BTC")
+          eth: groupBucketsBySize(averageEntryBookResult.rows.map(mapAverageEntryPriceBucket).filter((bucket) => bucket.instrument === "ETH")),
+          btc: groupBucketsBySize(averageEntryBookResult.rows.map(mapAverageEntryPriceBucket).filter((bucket) => bucket.instrument === "BTC"))
         },
         traders: tradersResult.rows.map(mapTrader),
         walletMaintenance

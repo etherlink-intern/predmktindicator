@@ -30,6 +30,19 @@ function formatPnl(value: number) {
   return <span style={{ color: value > 0 ? "var(--positive)" : "var(--negative)" }}>{formatCompactUsd(value)}</span>;
 }
 
+function averageEntryMove(position: { side: string; entryPriceUsd: number; oraclePrice: number }) {
+  if (!position.entryPriceUsd || !position.oraclePrice) return null;
+  if (position.side === "short") {
+    return (position.entryPriceUsd - position.oraclePrice) / position.entryPriceUsd;
+  }
+  return (position.oraclePrice - position.entryPriceUsd) / position.entryPriceUsd;
+}
+
+function formatEntryMove(value: number | null) {
+  if (value === null || !Number.isFinite(value)) return "—";
+  return <span style={{ color: value >= 0 ? "var(--positive)" : "var(--negative)" }}>{formatPercent(value)}</span>;
+}
+
 export const dynamic = "force-dynamic";
 
 type TraderPageProps = {
@@ -139,7 +152,8 @@ export default async function TraderPage({ params }: TraderPageProps) {
               <th>Market</th>
               <th>Side</th>
               <th className="numeric">Oracle price</th>
-              <th className="numeric">Entry price</th>
+              <th className="numeric">Avg entry</th>
+              <th className="numeric">Entry Δ</th>
               <th className="numeric">PnL</th>
               <th className="numeric">Collateral</th>
               <th className="numeric">Debt</th>
@@ -156,7 +170,8 @@ export default async function TraderPage({ params }: TraderPageProps) {
                 <td>{displayPool(position.poolName)}</td>
                 <td><span className={`pill ${position.side}`}>{position.side}</span></td>
                 <td className="numeric">{formatOraclePrice(position.oraclePrice)}</td>
-                <td className="numeric">{position.entryPriceUsd ? formatUsd(position.entryPriceUsd) : "—"}</td>
+                <td className="numeric" title="Average entry price for this open position, using official f(x) orders when indexed and snapshot fallback otherwise.">{position.entryPriceUsd ? formatUsd(position.entryPriceUsd) : "—"}</td>
+                <td className="numeric" title="Move from average entry to current oracle price, adjusted for long/short direction.">{formatEntryMove(averageEntryMove(position))}</td>
                 <td className="numeric">{formatPnl(position.unrealizedPnlUsd)}</td>
                 <td className="numeric">{formatUsd(position.collateralValueUsd)}</td>
                 <td className="numeric">{formatUsd(position.debtValueUsd)}</td>

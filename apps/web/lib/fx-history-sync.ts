@@ -535,9 +535,26 @@ async function syncOfficialFxOrders(client: Client) {
   let orderCount = 0;
   const chunkSize = 5;
 
-  for (const pool of OFFICIAL_POOLS.filter((item) => item.side === "short")) {
+  for (const pool of OFFICIAL_POOLS) {
     const currentIds = await client.query<{ token_id: string }>(
-      `select token_id::text from public.fx_current_positions where lower(pool_address) = $1 order by token_id`,
+      pool.side === "short"
+        ? `select token_id::text
+           from public.fx_current_positions
+           where lower(pool_address) = $1
+           order by token_id`
+        : `select p.token_id::text
+           from public.fx_current_positions p
+           where lower(p.pool_address) = $1
+             and (
+               p.entry_price_raw is null
+               or not exists (
+                 select 1
+                 from public.fx_official_position_orders o
+                 where lower(o.pool_address) = lower(p.pool_address)
+                   and o.position_id = p.token_id
+               )
+             )
+           order by p.token_id`,
       [pool.poolAddress],
     );
     const ids = currentIds.rows.map((row) => row.token_id);
@@ -762,15 +779,6 @@ async function updateUiPnlFromOfficialOrders(client: Client) {
       add column if not exists ui_last_order_block bigint;
   `);
 
-  await client.query(`
-    update public.fx_current_positions
-    set ui_entry_price_usd = null,
-        ui_unrealized_pnl_usd = null,
-        ui_order_count = 0,
-        ui_last_order_block = null
-    where side <> 'short';
-  `);
-
   const currentRows = await client.query<Record<string, unknown>>(`
     select lower(pool_address) as pool_address, token_id, oracle_price, raw_collateral, raw_debt, collateral_value_usd, debt_value_usd
     from public.fx_current_positions
@@ -784,7 +792,7 @@ async function updateUiPnlFromOfficialOrders(client: Client) {
     const poolAddress = String(current.pool_address).toLowerCase();
     const tokenId = String(current.token_id);
     const pool = OFFICIAL_POOLS.find((item) => item.poolAddress === poolAddress);
-    if (!pool || pool.side !== "short") continue;
+    if (!pool) continue;
 
     const officialPosition = await client.query<Record<string, unknown>>(
       `select * from public.fx_official_positions where lower(pool_address) = $1 and position_id = $2::numeric limit 1`,
