@@ -1,4 +1,5 @@
 import { displayInstrument, displayPool, formatPercent, formatUsd, getDashboardData } from "../lib/fx-dashboard";
+import type { EntryDepthBucket } from "../lib/fx-dashboard";
 import { LastRefreshedCounter } from "./last-refreshed";
 import { LocalTime } from "./local-time";
 
@@ -63,6 +64,100 @@ function formatUtcWindow(start: string | null, end: string | null) {
   const formatter = new Intl.DateTimeFormat("en", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "UTC" });
   return `${formatter.format(new Date(start))}–${formatter.format(new Date(end))} UTC`;
 }
+
+function formatEntryPrice(value: number) {
+  if (value >= 10_000) return `$${Math.round(value / 1000)}K`;
+  if (value >= 1_000) return `$${(value / 1000).toFixed(value >= 2000 ? 1 : 2)}K`;
+  return `$${Math.round(value)}`;
+}
+
+function EntryDepthVector({
+  label,
+  buckets,
+  accent,
+}: {
+  label: "ETH" | "BTC";
+  buckets: EntryDepthBucket[];
+  accent: string;
+}) {
+  const rows = buckets.filter((bucket) => bucket.longNotionalUsd > 0 || bucket.shortNotionalUsd > 0);
+  const totalLong = rows.reduce((sum, bucket) => sum + bucket.longNotionalUsd, 0);
+  const totalShort = rows.reduce((sum, bucket) => sum + bucket.shortNotionalUsd, 0);
+  const maxSide = Math.max(1, ...rows.map((bucket) => Math.max(bucket.longNotionalUsd, bucket.shortNotionalUsd)));
+  const width = 720;
+  const center = 360;
+  const sideWidth = 255;
+  const rowHeight = 22;
+  const chartTop = 24;
+  const height = Math.max(74, chartTop + rows.length * rowHeight + 10);
+
+  return (
+    <article className="card-hero" title={`${label} entry-price depth across currently open f(x) positions`}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", marginBottom: 8 }}>
+        <div>
+          <p className="metric-label" style={{ marginBottom: 2 }}>{label} Entry Depth</p>
+          <div className="metric-detail">Short wallets/notional ← entry bucket → long wallets/notional</div>
+        </div>
+        <div className="mono small" style={{ textAlign: "right", color: accent }}>
+          L {formatCompactUsd(totalLong)}<br />S {formatCompactUsd(totalShort)}
+        </div>
+      </div>
+
+      {rows.length === 0 ? (
+        <p className="muted small">No entry-price history yet.</p>
+      ) : (
+        <svg
+          aria-label={`${label} global entry depth by price bucket`}
+          role="img"
+          style={{ display: "block", width: "100%", height: "auto", overflow: "visible" }}
+          viewBox={`0 0 ${width} ${height}`}
+        >
+          <text x={86} y={12} fill="var(--negative)" fontSize="11" fontWeight="700" textAnchor="end">SHORT</text>
+          <text x={center} y={12} fill="var(--muted)" fontSize="11" fontWeight="700" textAnchor="middle">ENTRY</text>
+          <text x={width - 86} y={12} fill="var(--positive)" fontSize="11" fontWeight="700" textAnchor="start">LONG</text>
+          <line x1={center} y1={chartTop - 6} x2={center} y2={height - 8} stroke="rgba(148,163,184,0.32)" strokeWidth="1" />
+          {rows.map((bucket, index) => {
+            const y = chartTop + index * rowHeight;
+            const shortWidth = Math.max(bucket.shortNotionalUsd > 0 ? 3 : 0, (bucket.shortNotionalUsd / maxSide) * sideWidth);
+            const longWidth = Math.max(bucket.longNotionalUsd > 0 ? 3 : 0, (bucket.longNotionalUsd / maxSide) * sideWidth);
+            const labelText = `${formatEntryPrice(bucket.bucketLowUsd)}–${formatEntryPrice(bucket.bucketHighUsd)}`;
+            return (
+              <g key={`${bucket.instrument}-${bucket.bucketLowUsd}`}>
+                <title>{`${labelText}: long ${formatUsd(bucket.longNotionalUsd)} (${bucket.longOwners} wallets / ${bucket.longPositions} positions), short ${formatUsd(bucket.shortNotionalUsd)} (${bucket.shortOwners} wallets / ${bucket.shortPositions} positions)`}</title>
+                <rect
+                  x={center - shortWidth}
+                  y={y}
+                  width={shortWidth}
+                  height="10"
+                  rx="3"
+                  fill="rgba(239,68,68,0.62)"
+                />
+                <rect
+                  x={center}
+                  y={y}
+                  width={longWidth}
+                  height="10"
+                  rx="3"
+                  fill="rgba(34,197,94,0.58)"
+                />
+                <text x={center - sideWidth - 10} y={y + 9} fill="var(--muted)" fontSize="10" textAnchor="end">
+                  {bucket.shortNotionalUsd > 0 ? `${bucket.shortOwners}w · ${formatCompactUsd(bucket.shortNotionalUsd)}` : ""}
+                </text>
+                <text x={center} y={y + 9} fill="var(--foreground)" fontSize="10" fontWeight="700" textAnchor="middle">
+                  {labelText}
+                </text>
+                <text x={center + sideWidth + 10} y={y + 9} fill="var(--muted)" fontSize="10" textAnchor="start">
+                  {bucket.longNotionalUsd > 0 ? `${formatCompactUsd(bucket.longNotionalUsd)} · ${bucket.longOwners}w` : ""}
+                </text>
+              </g>
+            );
+          })}
+        </svg>
+      )}
+    </article>
+  );
+}
+
 
 function MarketOverviewSkeleton() {
   return (
@@ -305,6 +400,22 @@ export default async function HomePage() {
         fundingWindowEnd={dashboard.totals.fundingWindowEnd}
         hasSnapshot={dashboard.hasSnapshot}
       />
+
+      {dashboard.hasSnapshot && (
+        <section style={{ marginTop: 20 }} aria-label="Global entry depth">
+          <div className="section-header">
+            <div>
+              <p className="eyebrow">Entry depth</p>
+              <h2>Global position entry book</h2>
+            </div>
+            <span className="small muted">bucketed open-position wallets and notional by entry level</span>
+          </div>
+          <div className="card-grid" style={{ gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
+            <EntryDepthVector label="ETH" buckets={dashboard.entryDepth.eth} accent="#627eea" />
+            <EntryDepthVector label="BTC" buckets={dashboard.entryDepth.btc} accent="#f7931a" />
+          </div>
+        </section>
+      )}
 
       {!dashboard.hasSnapshot ? (
         <div className="card-warning">

@@ -21,6 +21,19 @@ export type PoolSummary = {
   avgDebtRatio: number;
 };
 
+export type EntryDepthBucket = {
+  instrument: "ETH" | "BTC";
+  bucketLowUsd: number;
+  bucketHighUsd: number;
+  bucketSizeUsd: number;
+  longNotionalUsd: number;
+  shortNotionalUsd: number;
+  longPositions: number;
+  shortPositions: number;
+  longOwners: number;
+  shortOwners: number;
+};
+
 export type TraderSummary = {
   owner: string;
   positions: number;
@@ -132,6 +145,10 @@ export type DashboardData = {
     fundingWindowWallets: number;
   };
   pools: PoolSummary[];
+  entryDepth: {
+    eth: EntryDepthBucket[];
+    btc: EntryDepthBucket[];
+  };
   traders: TraderSummary[];
   walletMaintenance: WalletMaintenanceSummary;
 };
@@ -166,6 +183,7 @@ const emptyDashboard: DashboardData = {
     fundingWindowWallets: 0
   },
   pools: [],
+  entryDepth: { eth: [], btc: [] },
   traders: [],
   walletMaintenance: emptyWalletMaintenanceSummary
 };
@@ -255,6 +273,22 @@ function mapPosition(row: Record<string, unknown>): PositionSummary {
     debtValueUsd: toNumber(row.debtValueUsd),
     equityUsd: toNumber(row.equityUsd),
     debtRatio: toNumber(row.debtRatio)
+  };
+}
+
+function mapEntryDepthBucket(row: Record<string, unknown>): EntryDepthBucket {
+  const instrument = String(row.instrument) === "BTC" ? "BTC" : "ETH";
+  return {
+    instrument,
+    bucketLowUsd: toNumber(row.bucketLowUsd),
+    bucketHighUsd: toNumber(row.bucketHighUsd),
+    bucketSizeUsd: toNumber(row.bucketSizeUsd),
+    longNotionalUsd: toNumber(row.longNotionalUsd),
+    shortNotionalUsd: toNumber(row.shortNotionalUsd),
+    longPositions: toNumber(row.longPositions),
+    shortPositions: toNumber(row.shortPositions),
+    longOwners: toNumber(row.longOwners),
+    shortOwners: toNumber(row.shortOwners)
   };
 }
 
@@ -414,7 +448,7 @@ export async function getDashboardData(): Promise<DashboardData> {
         return emptyDashboard;
       }
 
-      const [generatedAt, walletMaintenance, totalsResult, poolsResult, tradersResult] = await Promise.all([
+      const [generatedAt, walletMaintenance, totalsResult, poolsResult, entryDepthResult, tradersResult] = await Promise.all([
         latestSnapshotTime(client),
         getWalletMaintenanceSummary(client),
         client.query<{
@@ -526,6 +560,58 @@ export async function getDashboardData(): Promise<DashboardData> {
           order by side, collateral, pool_name
         `),
         client.query<Record<string, unknown>>(`
+          with positioned_entries as (
+            select
+              case when collateral = 'WBTC' then 'BTC' else 'ETH' end as instrument,
+              side,
+              owner,
+              case when collateral = 'WBTC' then 5000::numeric else 200::numeric end as bucket_size_usd,
+              coalesce(
+                ui_entry_price_usd,
+                case
+                  when side = 'long' and entry_price_raw is not null and entry_price_raw > 0
+                    then entry_price_raw / 1000000000000000000
+                  when side = 'short' and entry_price_raw is not null and entry_price_raw > 0
+                    then 1000000000000000000::numeric / entry_price_raw
+                  else null
+                end
+              ) as entry_price_usd,
+              case
+                when side = 'long' then coalesce(collateral_value_usd, 0)
+                when side = 'short' then coalesce(debt_value_usd, 0)
+                else 0
+              end as notional_usd
+            from public.fx_current_positions
+            where entry_price_raw is not null or ui_entry_price_usd is not null
+          ), buckets as (
+            select
+              instrument,
+              bucket_size_usd,
+              floor(entry_price_usd / bucket_size_usd) * bucket_size_usd as bucket_low_usd,
+              side,
+              owner,
+              notional_usd
+            from positioned_entries
+            where entry_price_usd is not null
+              and entry_price_usd > 0
+              and notional_usd > 0
+          )
+          select
+            instrument,
+            bucket_low_usd::float8 as "bucketLowUsd",
+            (bucket_low_usd + bucket_size_usd)::float8 as "bucketHighUsd",
+            bucket_size_usd::float8 as "bucketSizeUsd",
+            coalesce(sum(notional_usd) filter (where side = 'long'), 0)::float8 as "longNotionalUsd",
+            coalesce(sum(notional_usd) filter (where side = 'short'), 0)::float8 as "shortNotionalUsd",
+            count(*) filter (where side = 'long')::int as "longPositions",
+            count(*) filter (where side = 'short')::int as "shortPositions",
+            count(distinct owner) filter (where side = 'long')::int as "longOwners",
+            count(distinct owner) filter (where side = 'short')::int as "shortOwners"
+          from buckets
+          group by instrument, bucket_size_usd, bucket_low_usd
+          order by instrument asc, bucket_low_usd desc
+        `),
+        client.query<Record<string, unknown>>(`
           ${traderSelect}
           group by public.fx_current_positions.owner
           order by "notionalValueUsd" desc, positions desc, owner asc
@@ -578,6 +664,10 @@ export async function getDashboardData(): Promise<DashboardData> {
           equityUsd: toNumber(row.equity_usd),
           avgDebtRatio: toNumber(row.avg_debt_ratio)
         })),
+        entryDepth: {
+          eth: entryDepthResult.rows.map(mapEntryDepthBucket).filter((bucket) => bucket.instrument === "ETH"),
+          btc: entryDepthResult.rows.map(mapEntryDepthBucket).filter((bucket) => bucket.instrument === "BTC")
+        },
         traders: tradersResult.rows.map(mapTrader),
         walletMaintenance
       };
