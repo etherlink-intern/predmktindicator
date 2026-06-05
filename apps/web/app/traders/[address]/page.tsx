@@ -19,10 +19,12 @@ function formatCompactUsd(value: number) {
   return `${sign}$${Math.round(absolute).toLocaleString()}`;
 }
 
-function formatOraclePrice(price: number) {
+function formatOraclePrice(price: number, side?: string) {
   if (price === 0) return "—";
-  if (price >= 1) return nf.format(price);
-  return price.toFixed(6);
+  // Short positions store oracle price as 1/real_price
+  const displayPrice = side === 'short' && price > 0 && price < 1 ? 1 / price : price;
+  if (displayPrice >= 1) return nf.format(displayPrice);
+  return displayPrice.toFixed(6);
 }
 
 function formatPnl(value: number) {
@@ -218,7 +220,7 @@ export default async function TraderPage({ params }: TraderPageProps) {
                 </td>
                 <td>{displayPool(position.poolName)}</td>
                 <td><span className={`pill ${position.side}`}>{position.side}</span></td>
-                <td className="numeric">{formatOraclePrice(position.oraclePrice)}</td>
+                <td className="numeric">{formatOraclePrice(position.oraclePrice, position.side)}</td>
                 <td className="numeric" title="Average entry price for this open position, using official f(x) orders when indexed and snapshot fallback otherwise.">{position.entryPriceUsd ? formatUsd(position.entryPriceUsd) : "—"}</td>
                 <td className="numeric" title="Move from average entry to current oracle price, adjusted for long/short direction.">{formatEntryMove(averageEntryMove(position))}</td>
                 <td className="numeric">{formatPnl(position.unrealizedPnlUsd)}</td>
