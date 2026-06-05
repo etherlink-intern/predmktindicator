@@ -310,10 +310,10 @@ export default async function HomePage() {
   return (
     <section>
       <p className="eyebrow">f(x) Protocol</p>
-      <h1>Live f(x) trader profiles</h1>
+      <h1>f(x) Protocol research intelligence</h1>
       <p className="muted">
-        Explore current f(x) Protocol positions by wallet using public on-chain data. Values are snapshot estimates
-        from verified contracts and oracle prices; they are not realized profit/loss or financial advice.
+        Explore trader behavior, capital flows, protocol health and live position risk using public on-chain data.
+        Every table states what it ranks or measures; no opaque composite scores are used as defaults.
       </p>
       <LastRefreshedCounter generatedAt={dashboard.generatedAt} />
 

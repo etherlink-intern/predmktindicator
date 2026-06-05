@@ -22,7 +22,7 @@ const TABS: { id: TabId; label: string; description: string }[] = [
   },
   {
     id: "realized",
-    label: "Realized PnL",
+    label: "Best Realized PnL",
     description:
       "Ranks by realized (closed) profit/loss only. Excludes unrealized gains. Traders with no realized PnL data are marked n/a and ranked last.",
   },

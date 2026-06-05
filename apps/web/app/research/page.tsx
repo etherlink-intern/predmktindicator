@@ -114,7 +114,7 @@ export default async function ResearchPage() {
           <div>
             <p className="eyebrow">Research Cards</p>
             <h2>Current signals</h2>
-            <p className="muted small">Each signal links to a detail page, capital-flow page, position page or trader profile.</p>
+            <p className="muted small">Each signal opens a drill-down detail page with a source link to the relevant flow, position, or trader view.</p>
           </div>
         </div>
         <div className="research-card-grid">
@@ -147,7 +147,7 @@ export default async function ResearchPage() {
         </div>
       </section>
 
-      <section>
+      <section id="conviction-tracker">
         <div className="section-header">
           <div>
             <p className="eyebrow">Conviction Tracker</p>

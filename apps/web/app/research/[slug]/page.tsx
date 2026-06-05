@@ -24,9 +24,9 @@ export default async function ResearchDetailPage({ params }: PageProps) {
           <p className="eyebrow">Measurement</p>
           <h2>{card.metric}</h2>
           <p className="muted">
-            This research card is a drill-down stub that points to the live source view for verification. The signal is generated from indexed f(x) positions, cashflows and wallet-level PnL. It is not a composite score; the metric above is the direct value used on the card.
+            This drill-down brief explains the live signal and points to the source view for verification. The signal is generated from indexed f(x) positions, cashflows and wallet-level PnL. It is not a composite score; the metric above is the direct value used on the card.
           </p>
-          <a className="button" href={card.href}>Open source view →</a>
+          <a className="button" href={card.sourceHref}>Open source view →</a>
         </div>
         <div className="terminal-metrics">
           <div><span>Signal group</span><strong>{card.kicker}</strong></div>
