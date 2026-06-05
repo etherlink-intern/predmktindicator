@@ -513,19 +513,6 @@ const OFFICIAL_POSITION_QUERY = `
   }
 `;
 
-// Lightweight query: only position ID and order protocol fees — used for
-// fee aggregation on long pools where syncing full order data would be too heavy.
-const LONG_POOL_FEE_QUERY = `
-  query LongPoolFees($ids: [String!]!, $skip: Int!) {
-    positions(first: 1000, where: { id_in: $ids }) {
-      id
-      orders(first: 1000, skip: $skip) {
-        protocolFees
-      }
-    }
-  }
-`;
-
 async function fetchOfficialPositions(pool: OfficialPoolConfig, ids: string[]): Promise<OfficialPosition[]> {
   if (ids.length === 0) return [];
   const response = await fetch(pool.endpoint, {
@@ -958,7 +945,24 @@ export async function computeFxPositionPnl(client: Client) {
         coalesce(sum(c.debt_increase_raw), 0) as debt_increase_raw,
         coalesce(sum(c.debt_decrease_raw), 0) as debt_decrease_raw,
         coalesce(sum(c.debt_increase_raw - c.debt_decrease_raw), 0) as net_debt_raw,
-        coalesce(sum(c.fee_raw), 0) as total_fees_raw,
+        coalesce(sum(
+          case
+            -- Current f(x) long-pool config charges 50 bps on borrow/open/add
+            -- and 20 bps on repay/close/reduce. These fees are fxUSD-denominated.
+            when lower(c.pool_address) in (
+              '0x6ecfa38fee8a5277b91efda204c235814f0122e8',
+              '0xab709e26fa6b0a30c119d8c55b887ded24952473'
+            ) then c.debt_increase_raw * 5000000 / 1000000000 + c.debt_decrease_raw * 2000000 / 1000000000
+            -- Current f(x) short-pool config charges 30 bps on supplied fxUSD and
+            -- 10 bps on withdrawn fxUSD. Supply events record the net amount after
+            -- the fee was deducted, so gross-up by fee/(1-fee) for the supply side.
+            when lower(c.pool_address) in (
+              '0x25707b9e6690b52c60ae6744d711cf9c1dfc1876',
+              '0xa0cc8162c523998856d59065faa254f87d20a5b0'
+            ) then c.collateral_in_raw * 3000000 / (1000000000 - 3000000) + c.collateral_out_raw * 1000000 / 1000000000
+            else c.fee_raw
+          end
+        ), 0) as total_fees_raw,
         coalesce(sum(c.collateral_out_raw - c.collateral_in_raw - c.fee_raw), 0) as realized_pnl_raw,
         e.entry_price_raw,
         min(c.block_number)::bigint as first_cashflow_block,
@@ -976,20 +980,41 @@ export async function computeFxPositionPnl(client: Client) {
       select
         n.pool_address,
         n.position_id,
-        0::int as cashflow_event_count,
-        0::numeric as collateral_in_raw,
-        0::numeric as collateral_out_raw,
-        0::numeric as net_collateral_raw,
-        0::numeric as debt_increase_raw,
-        0::numeric as debt_decrease_raw,
-        0::numeric as net_debt_raw,
-        0::numeric as total_fees_raw,
+        count(*)::int as cashflow_event_count,
+        coalesce(sum(c.collateral_in_raw), 0) as collateral_in_raw,
+        coalesce(sum(c.collateral_out_raw), 0) as collateral_out_raw,
+        coalesce(sum(c.collateral_out_raw - c.collateral_in_raw), 0) as net_collateral_raw,
+        coalesce(sum(c.debt_increase_raw), 0) as debt_increase_raw,
+        coalesce(sum(c.debt_decrease_raw), 0) as debt_decrease_raw,
+        coalesce(sum(c.debt_increase_raw - c.debt_decrease_raw), 0) as net_debt_raw,
+        coalesce(sum(
+          case
+            when lower(c.pool_address) in (
+              '0x6ecfa38fee8a5277b91efda204c235814f0122e8',
+              '0xab709e26fa6b0a30c119d8c55b887ded24952473'
+            ) then c.debt_increase_raw * 5000000 / 1000000000 + c.debt_decrease_raw * 2000000 / 1000000000
+            when lower(c.pool_address) in (
+              '0x25707b9e6690b52c60ae6744d711cf9c1dfc1876',
+              '0xa0cc8162c523998856d59065faa254f87d20a5b0'
+            ) then c.collateral_in_raw * 3000000 / (1000000000 - 3000000) + c.collateral_out_raw * 1000000 / 1000000000
+            else c.fee_raw
+          end
+        ), 0) as total_fees_raw,
         0::numeric as realized_pnl_raw,
         e.entry_price_raw,
-        null::bigint as first_cashflow_block,
-        null::bigint as last_cashflow_block
+        min(c.block_number)::bigint as first_cashflow_block,
+        max(c.block_number)::bigint as last_cashflow_block
       from never_closed n
+      join public.fx_position_cashflows c
+        on lower(c.pool_address) = lower(n.pool_address)
+        and c.position_id = n.position_id
       left join entry_prices e on lower(e.pool_address) = lower(n.pool_address) and e.position_id = n.position_id
+      where c.source = 'manager'
+        and c.collateral_in_raw < 1000000000000000000000000
+        and c.collateral_out_raw < 1000000000000000000000000
+        and c.debt_increase_raw < 100000000000000000000000000000000
+        and c.debt_decrease_raw < 100000000000000000000000000000000
+      group by n.pool_address, n.position_id, e.entry_price_raw
     ), upserted as (
       insert into public.fx_position_pnl(
         pool_address, position_id, cashflow_event_count, collateral_in_raw, collateral_out_raw, net_collateral_raw,
@@ -1043,126 +1068,11 @@ export async function computeFxPositionPnl(client: Client) {
 
   const uiPnlUpdated = await updateUiPnlFromOfficialOrders(client);
 
-  // Step 3: Aggregate protocol fees from official order stream and add to total_fees_raw
-  // The Envio cashflow events stopped capturing protocolFees after Aug 2025
-  // (protocolFeeRate was set to 0 on the pool managers), but the official order
-  // stream still carries the actual per-order fee data.
-  let officialFeeUpdated = 0;
-  if (await tableExists(client, "public.fx_official_position_orders")) {
-    // Update fx_position_pnl with official order fees
-    const feeResult = await client.query(`
-      update public.fx_position_pnl p
-      set total_fees_raw = coalesce(p.total_fees_raw, 0) + f.official_fees,
-          updated_at = now()
-      from (
-        select lower(pool_address) as pool_address, position_id,
-               coalesce(sum(protocol_fees_raw), 0) as official_fees
-        from public.fx_official_position_orders
-        where protocol_fees_raw is not null and protocol_fees_raw > 0
-        group by lower(pool_address), position_id
-      ) f
-      where lower(p.pool_address) = f.pool_address
-        and p.position_id = f.position_id
-    `);
-    officialFeeUpdated = (feeResult.rowCount ?? 0);
-    // Also update fx_current_positions with the new fee totals
-    if (await tableExists(client, "public.fx_current_positions")) {
-      await client.query(`
-        update public.fx_current_positions p
-        set total_fees_raw = h.total_fees_raw
-        from public.fx_position_pnl h
-        where lower(p.pool_address) = lower(h.pool_address)
-          and p.token_id = h.position_id
-          and h.total_fees_raw > coalesce(p.total_fees_raw, 0)
-      `);
-    }
-  }
-
-  // Step 3b: For long pools, fetch protocol fees directly from the official API
-  // using a lightweight query that only returns fees, not the full order data.
-  const longPools = OFFICIAL_POOLS.filter((item) => item.side === "long");
-  for (const pool of longPools) {
-    try {
-    const currentIds = await client.query<{ token_id: string }>(
-      `select token_id::text from public.fx_current_positions where lower(pool_address) = $1 order by token_id`,
-      [pool.poolAddress],
-    );
-    const ids = currentIds.rows.map((row) => row.token_id);
-    let poolFeeCount = 0;
-    const longChunkSize = 50;
-    for (let start = 0; start < ids.length; start += longChunkSize) {
-      const chunk = ids.slice(start, start + longChunkSize);
-      if (chunk.length === 0) continue;
-
-      const feeTotals = new Map<string, bigint>();
-      const seenIds = new Set<string>();
-      for (const id of chunk) feeTotals.set(id, 0n);
-
-      let pageFailed = false;
-      for (let skip = 0; ; skip += 1000) {
-        let response: Response | null = null;
-        for (let attempt = 0; attempt < 3; attempt++) {
-          try {
-            response = await fetch(pool.endpoint, {
-              method: "POST",
-              headers: { "content-type": "application/json", "user-agent": "fx-trader-profiles/official-fee-sync" },
-              body: JSON.stringify({ query: LONG_POOL_FEE_QUERY, variables: { ids: chunk, skip } }),
-              signal: AbortSignal.timeout(20_000),
-            });
-            if (response.ok) break;
-            await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
-          } catch {
-            if (attempt < 2) await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
-          }
-        }
-        if (!response?.ok) {
-          pageFailed = true;
-          break;
-        }
-        const payload = (await response.json().catch(() => ({}))) as {
-          data?: { positions?: { id: string; orders?: { protocolFees?: string | null }[] }[] };
-        };
-        const positions = payload.data?.positions ?? [];
-        let sawFullPage = false;
-        for (const position of positions) {
-          seenIds.add(position.id);
-          const pageFees = (position.orders ?? [])
-            .map((o) => (o.protocolFees ? BigInt(String(o.protocolFees)) : 0n))
-            .reduce((a, b) => a + b, 0n);
-          feeTotals.set(position.id, (feeTotals.get(position.id) ?? 0n) + pageFees);
-          if ((position.orders ?? []).length === 1000) sawFullPage = true;
-        }
-        if (!sawFullPage) break;
-      }
-
-      if (pageFailed) continue;
-      for (const [positionId, orderFees] of feeTotals.entries()) {
-        if (!seenIds.has(positionId)) continue;
-        await client.query(
-          `update public.fx_position_pnl
-           set total_fees_raw = $3::numeric,
-               updated_at = now()
-           where lower(pool_address) = $1 and position_id = $2::numeric`,
-          [pool.poolAddress, nullSafe(positionId), String(orderFees)],
-        );
-        poolFeeCount += 1;
-      }
-    }
-    if (poolFeeCount > 0) {
-      await client.query(`
-        update public.fx_current_positions p
-        set total_fees_raw = h.total_fees_raw
-        from public.fx_position_pnl h
-        where lower(p.pool_address) = lower(h.pool_address)
-          and p.token_id = h.position_id
-          and lower(h.pool_address) = lower($1)
-      `, [pool.poolAddress]);
-      officialFeeUpdated += poolFeeCount;
-    }
-    } catch (err) {
-      console.error(`Long pool fee sync failed for ${pool.key}:`, err);
-    }
-  }
+  // Official order data is still used for UI-parity short entry/PnL, but not for fees.
+  // Current f(x) managers emit Operate.protocolFees as zero and route xPOSITION fees
+  // through open/close revenue-pool handlers. The canonical fee model is computed
+  // above from manager cashflow deltas and live fee-ratio contract semantics.
+  const officialFeeUpdated = 0;
 
   return {
     positionsUpserted: Number(result.rows[0]?.rows_upserted ?? 0),
