@@ -284,11 +284,13 @@ const traderSelect = `
     ), 0)
     + coalesce(sum(
       case when side = 'short' then realized_pnl_raw / 1000000000000000000
+           when collateral = 'WBTC' then realized_pnl_raw * oracle_price / 100000000
            else realized_pnl_raw * oracle_price / 1000000000000000000
       end
     ), 0))::float8 as "totalPnlUsd",
     coalesce(sum(
       case when side = 'short' then total_fees_raw / 1000000000000000000
+           when collateral = 'WBTC' then total_fees_raw * oracle_price / 100000000
            else total_fees_raw * oracle_price / 1000000000000000000
       end
     ), 0)::float8 as "feesUsd",
@@ -574,23 +576,36 @@ export async function getTraderProfile(address: string): Promise<TraderProfile |
              from public.fx_position_cashflows
              where (lower(user_address) = $1 or lower(recipient_address) = $1)
                and position_id is not null
+           ), pool_meta as (
+             select distinct on (lower(pool_address))
+               lower(pool_address) as pool_address,
+               pool_name,
+               side,
+               collateral,
+               oracle_price
+             from public.fx_current_positions
+             order by lower(pool_address), updated_at desc nulls last
            )
            select
              lower(h.pool_address) as "poolAddress",
-             coalesce(p.pool_name, h.pool_address) as "poolName",
-             coalesce(p.side, 'unknown') as "side",
+             coalesce(p.pool_name, m.pool_name, h.pool_address) as "poolName",
+             coalesce(p.side, m.side, 'unknown') as "side",
              h.position_id::text as "tokenId",
              coalesce(
-               case when coalesce(p.side, 'long') = 'short'
+               case when coalesce(p.side, m.side, 'long') = 'short'
                  then h.total_fees_raw / 1000000000000000000
-                 else h.total_fees_raw * coalesce(p.oracle_price, 0) / 1000000000000000000
+                 when coalesce(p.collateral, m.collateral) = 'WBTC'
+                 then h.total_fees_raw * coalesce(p.oracle_price, m.oracle_price, 0) / 100000000
+                 else h.total_fees_raw * coalesce(p.oracle_price, m.oracle_price, 0) / 1000000000000000000
                end,
              0)::float8 as "feesUsd",
              h.cashflow_event_count as "cashflowEventCount",
              coalesce(
-               case when coalesce(p.side, 'long') = 'short'
+               case when coalesce(p.side, m.side, 'long') = 'short'
                  then h.realized_pnl_raw / 1000000000000000000
-                 else h.realized_pnl_raw * coalesce(p.oracle_price, 0) / 1000000000000000000
+                 when coalesce(p.collateral, m.collateral) = 'WBTC'
+                 then h.realized_pnl_raw * coalesce(p.oracle_price, m.oracle_price, 0) / 100000000
+                 else h.realized_pnl_raw * coalesce(p.oracle_price, m.oracle_price, 0) / 1000000000000000000
                end,
              0)::float8 as "realizedPnlUsd",
              h.first_cashflow_block as "firstBlock",
@@ -600,6 +615,8 @@ export async function getTraderProfile(address: string): Promise<TraderProfile |
            join trader_cashflows tc on lower(tc.pool_address) = lower(h.pool_address) and tc.position_id = h.position_id
            left join public.fx_current_positions p
              on lower(p.pool_address) = lower(h.pool_address) and p.token_id = h.position_id
+           left join pool_meta m
+             on m.pool_address = lower(h.pool_address)
            order by h.last_cashflow_block desc nulls last`,
           [normalized]
         )

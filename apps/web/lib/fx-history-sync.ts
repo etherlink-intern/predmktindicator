@@ -516,10 +516,10 @@ const OFFICIAL_POSITION_QUERY = `
 // Lightweight query: only position ID and order protocol fees — used for
 // fee aggregation on long pools where syncing full order data would be too heavy.
 const LONG_POOL_FEE_QUERY = `
-  query LongPoolFees($ids: [String!]!) {
+  query LongPoolFees($ids: [String!]!, $skip: Int!) {
     positions(first: 1000, where: { id_in: $ids }) {
       id
-      orders(first: 1000) {
+      orders(first: 1000, skip: $skip) {
         protocolFees
       }
     }
@@ -1093,36 +1093,57 @@ export async function computeFxPositionPnl(client: Client) {
     for (let start = 0; start < ids.length; start += longChunkSize) {
       const chunk = ids.slice(start, start + longChunkSize);
       if (chunk.length === 0) continue;
-      let response: Response | null = null;
-      for (let attempt = 0; attempt < 3; attempt++) {
-        try {
-          response = await fetch(pool.endpoint, {
-            method: "POST",
-            headers: { "content-type": "application/json", "user-agent": "fx-trader-profiles/official-fee-sync" },
-            body: JSON.stringify({ query: LONG_POOL_FEE_QUERY, variables: { ids: chunk } }),
-            signal: AbortSignal.timeout(15_000),
-          });
-          if (response.ok) break;
-          await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
-        } catch {
-          if (attempt < 2) await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
+
+      const feeTotals = new Map<string, bigint>();
+      const seenIds = new Set<string>();
+      for (const id of chunk) feeTotals.set(id, 0n);
+
+      let pageFailed = false;
+      for (let skip = 0; ; skip += 1000) {
+        let response: Response | null = null;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            response = await fetch(pool.endpoint, {
+              method: "POST",
+              headers: { "content-type": "application/json", "user-agent": "fx-trader-profiles/official-fee-sync" },
+              body: JSON.stringify({ query: LONG_POOL_FEE_QUERY, variables: { ids: chunk, skip } }),
+              signal: AbortSignal.timeout(20_000),
+            });
+            if (response.ok) break;
+            await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
+          } catch {
+            if (attempt < 2) await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
+          }
         }
+        if (!response?.ok) {
+          pageFailed = true;
+          break;
+        }
+        const payload = (await response.json().catch(() => ({}))) as {
+          data?: { positions?: { id: string; orders?: { protocolFees?: string | null }[] }[] };
+        };
+        const positions = payload.data?.positions ?? [];
+        let sawFullPage = false;
+        for (const position of positions) {
+          seenIds.add(position.id);
+          const pageFees = (position.orders ?? [])
+            .map((o) => (o.protocolFees ? BigInt(String(o.protocolFees)) : 0n))
+            .reduce((a, b) => a + b, 0n);
+          feeTotals.set(position.id, (feeTotals.get(position.id) ?? 0n) + pageFees);
+          if ((position.orders ?? []).length === 1000) sawFullPage = true;
+        }
+        if (!sawFullPage) break;
       }
-      if (!response?.ok) continue;
-      const payload = (await response.json().catch(() => ({}))) as {
-        data?: { positions?: { id: string; orders?: { protocolFees?: string }[] }[] };
-      };
-      for (const position of payload.data?.positions ?? []) {
-        const orderFees = (position.orders ?? [])
-          .map((o) => (o.protocolFees ? BigInt(String(o.protocolFees)) : 0n))
-          .reduce((a, b) => a + b, 0n);
-        if (orderFees <= 0n) continue;
+
+      if (pageFailed) continue;
+      for (const [positionId, orderFees] of feeTotals.entries()) {
+        if (!seenIds.has(positionId)) continue;
         await client.query(
           `update public.fx_position_pnl
-           set total_fees_raw = coalesce(total_fees_raw, 0) + $3::numeric,
+           set total_fees_raw = $3::numeric,
                updated_at = now()
            where lower(pool_address) = $1 and position_id = $2::numeric`,
-          [pool.poolAddress, nullSafe(position.id), String(orderFees)],
+          [pool.poolAddress, nullSafe(positionId), String(orderFees)],
         );
         poolFeeCount += 1;
       }
@@ -1135,7 +1156,6 @@ export async function computeFxPositionPnl(client: Client) {
         where lower(p.pool_address) = lower(h.pool_address)
           and p.token_id = h.position_id
           and lower(h.pool_address) = lower($1)
-          and h.total_fees_raw > coalesce(p.total_fees_raw, 0)
       `, [pool.poolAddress]);
       officialFeeUpdated += poolFeeCount;
     }
