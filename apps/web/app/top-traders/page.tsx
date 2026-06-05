@@ -1,48 +1,190 @@
-import { formatPercent, formatUsd, getTopTraders, type TopTrader } from "../../lib/fx-dashboard";
-import { LocalTime } from "../local-time";
+"use client";
 
-export const dynamic = "force-dynamic";
+import { useEffect, useState } from "react";
+import { formatPercent, formatUsd, getTopTraders, type TopTrader } from "../../lib/fx-dashboard";
+
+type TabId = "pnl" | "roi" | "realized" | "active" | "whale";
+
+const TABS: { id: TabId; label: string; description: string }[] = [
+  {
+    id: "pnl",
+    label: "Top PnL",
+    description:
+      "Ranks wallets by total profit/loss across open and closed positions. Most profitable traders appear first; negative-PnL traders rank below all positive-PnL traders.",
+  },
+  {
+    id: "roi",
+    label: "Top ROI",
+    description:
+      "Return on Investment = total PnL ÷ capital used. Ranks by capital efficiency. Trader must have at least $1K in capital to qualify.",
+  },
+  {
+    id: "realized",
+    label: "Realized PnL",
+    description:
+      "Ranks by realized (closed) profit/loss only. Excludes unrealized gains. Traders with no realized PnL data are marked n/a and ranked last.",
+  },
+  {
+    id: "active",
+    label: "Most Active",
+    description:
+      "Ranks by total number of positions (open + closed). This measures activity, not profitability. High position count does not imply positive returns.",
+  },
+  {
+    id: "whale",
+    label: "Whale Traders",
+    description:
+      "Ranks by current notional value (total exposure). This measures size, not profitability. Largest positions appear first.",
+  },
+];
 
 function shortAddress(addr: string) {
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
 }
 
-function formatScore(score: number) {
-  return (score * 100).toFixed(0);
-}
-
-function ScoreBar({ score }: { score: number }) {
-  const pct = Math.max(2, score * 100);
-  const color =
-    score >= 0.6 ? "rgba(34,197,94,0.72)" :
-    score >= 0.35 ? "rgba(234,179,8,0.72)" :
-    "rgba(239,68,68,0.72)";
+function PnlBar({ value, maxAbs }: { value: number; maxAbs: number }) {
+  const pct = maxAbs > 0 ? Math.min(100, (Math.abs(value) / maxAbs) * 100) : 0;
+  const isPositive = value >= 0;
   return (
-    <span style={{ display: "inline-block", width: 80, height: 6, borderRadius: 999, background: "var(--border)", verticalAlign: "middle" }}>
-      <span style={{ display: "block", width: `${pct}%`, height: "100%", borderRadius: 999, background: color }} />
+    <span
+      style={{
+        display: "inline-block",
+        width: 80,
+        height: 6,
+        borderRadius: 999,
+        background: "var(--border)",
+        verticalAlign: "middle",
+      }}
+    >
+      <span
+        style={{
+          display: "block",
+          width: `${Math.max(2, pct)}%`,
+          height: "100%",
+          borderRadius: 999,
+          background: isPositive ? "rgba(34,197,94,0.72)" : "rgba(239,68,68,0.72)",
+        }}
+      />
     </span>
   );
 }
 
-function WinRateBadge({ rate }: { rate: number }) {
-  if (rate === 0) return <span className="muted">n/a</span>;
-  const color = rate >= 0.6 ? "var(--green)" : rate >= 0.3 ? "var(--amber)" : "var(--red)";
-  return <span style={{ color, fontWeight: 700 }}>{formatPercent(rate)}</span>;
+function sortTraders(traders: TopTrader[], tab: TabId): TopTrader[] {
+  const sorted = [...traders];
+  switch (tab) {
+    case "pnl": {
+      const positive = sorted.filter((t) => t.totalPnlUsd > 0).sort((a, b) => b.totalPnlUsd - a.totalPnlUsd);
+      const zero = sorted.filter((t) => t.totalPnlUsd === 0);
+      const negative = sorted.filter((t) => t.totalPnlUsd < 0).sort((a, b) => b.totalPnlUsd - a.totalPnlUsd);
+      return [...positive, ...zero, ...negative].slice(0, 10);
+    }
+    case "roi":
+      return sorted
+        .filter((t) => Math.max(t.capitalUsedUsd, t.notionalUsd) >= 1000)
+        .sort((a, b) => b.roi - a.roi)
+        .slice(0, 10);
+    case "realized": {
+      const withData = sorted
+        .filter((t) => t.realizedPnlUsd !== 0 || t.closedPositions > 0)
+        .sort((a, b) => b.realizedPnlUsd - a.realizedPnlUsd);
+      const withoutData = sorted.filter((t) => t.realizedPnlUsd === 0 && t.closedPositions === 0);
+      return [...withData, ...withoutData].slice(0, 10);
+    }
+    case "active":
+      return sorted.sort((a, b) => b.totalPositions - a.totalPositions).slice(0, 10);
+    case "whale":
+      return sorted.sort((a, b) => b.notionalUsd - a.notionalUsd).slice(0, 10);
+    default:
+      return sorted.slice(0, 10);
+  }
 }
 
-export default async function TopTradersPage() {
-  const traders = await getTopTraders();
+function getMetricLabel(tab: TabId): string {
+  switch (tab) {
+    case "pnl": return "Total PnL";
+    case "roi": return "ROI";
+    case "realized": return "Realized PnL";
+    case "active": return "Positions";
+    case "whale": return "Notional";
+  }
+}
+
+function getMetricValue(t: TopTrader, tab: TabId): number {
+  switch (tab) {
+    case "pnl": return t.totalPnlUsd;
+    case "roi": return t.roi;
+    case "realized": return t.realizedPnlUsd;
+    case "active": return t.totalPositions;
+    case "whale": return t.notionalUsd;
+  }
+}
+
+export default function TopTradersPage() {
+  const [traders, setTraders] = useState<TopTrader[]>([]);
+  const [tab, setTab] = useState<TabId>("pnl");
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    getTopTraders().then((data) => {
+      setTraders(data);
+      setLoading(false);
+    });
+  }, []);
+
+  const ranked = sortTraders(traders, tab);
+  const activeTab = TABS.find((t) => t.id === tab)!;
+
+  // Calculate max absolute PnL for the bar
+  const maxPnl = Math.max(1, ...ranked.map((t) => Math.abs(t.totalPnlUsd)));
 
   return (
     <section>
       <p className="eyebrow">Rankings</p>
       <h1>Top 10 Traders</h1>
-      <p className="muted">
-        Wallets ranked by a composite score that rewards profitable trading (realized + unrealized PnL),
-        consistency (win rate), activity (position count), and risk management (lower leverage).
+      <p className="muted">Select a ranking method below. Each tab sorts traders by a different dimension of performance.</p>
+
+      {/* Tab bar */}
+      <div
+        style={{
+          display: "flex",
+          gap: 4,
+          marginTop: 16,
+          marginBottom: 4,
+          borderBottom: "1px solid var(--border)",
+          paddingBottom: 0,
+          overflowX: "auto",
+        }}
+      >
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            style={{
+              background: "none",
+              border: "none",
+              borderBottom: tab === t.id ? "2px solid var(--fg)" : "2px solid transparent",
+              padding: "8px 16px",
+              cursor: "pointer",
+              color: tab === t.id ? "var(--fg)" : "var(--muted)",
+              fontWeight: tab === t.id ? 700 : 500,
+              fontSize: 14,
+              whiteSpace: "nowrap",
+              transition: "color 0.15s, border-color 0.15s",
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Tab description */}
+      <p className="muted small" style={{ marginBottom: 16, lineHeight: 1.5 }} title={activeTab.description}>
+        {activeTab.description}
       </p>
 
-      {traders.length === 0 ? (
+      {loading ? (
+        <p className="muted">Loading…</p>
+      ) : ranked.length === 0 ? (
         <div className="card-warning">
           <p className="muted">No trader data available yet. Rankings will appear after positions are synced.</p>
         </div>
@@ -51,74 +193,60 @@ export default async function TopTradersPage() {
           <table className="compact" style={{ width: "100%", minWidth: 680 }}>
             <thead>
               <tr>
-                <th style={{ width: 40 }}>#</th>
+                <th style={{ width: 36 }}>#</th>
                 <th>Trader</th>
-                <th style={{ width: 90 }}>Score</th>
-                <th className="numeric">Total PnL</th>
-                <th className="numeric">Realized PnL</th>
-                <th className="numeric">Win Rate</th>
-                <th className="numeric">Positions</th>
-                <th className="numeric">Notional</th>
-                <th className="numeric">Max Debt</th>
-                <th className="numeric">Fees</th>
+                <th className="numeric" style={{ width: 110 }}>{getMetricLabel(tab)}</th>
+                <th className="numeric" style={{ width: 90 }}>Realized</th>
+                <th className="numeric" style={{ width: 70 }}>Win Rate</th>
+                <th className="numeric" style={{ width: 80 }}>Positions</th>
+                <th className="numeric" style={{ width: 110 }}>Notional</th>
+                <th className="numeric" style={{ width: 80 }}>Debt</th>
+                <th className="numeric" style={{ width: 80 }}>Fees</th>
               </tr>
             </thead>
             <tbody>
-              {traders.map((t: TopTrader) => (
-                <tr key={t.address}>
-                  <td className="mono" style={{ fontWeight: 800, color: t.rank <= 3 ? "var(--gold)" : "inherit" }}>
-                    {t.rank}
-                  </td>
-                  <td>
-                    <a href={`/traders/${t.address}`} className="mono" style={{ textDecoration: "none" }}>
-                      {shortAddress(t.address)}
-                    </a>
-                  </td>
-                  <td>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <span className="mono small" style={{ fontWeight: 700, width: 24 }}>{formatScore(t.score)}</span>
-                      <ScoreBar score={t.score} />
-                    </div>
-                  </td>
-                  <td className={`numeric mono ${t.totalPnlUsd >= 0 ? "positive" : "negative"}`}>
-                    {formatUsd(t.totalPnlUsd)}
-                  </td>
-                  <td className={`numeric mono ${t.realizedPnlUsd >= 0 ? "positive" : "negative"}`}>
-                    {formatUsd(t.realizedPnlUsd)}
-                  </td>
-                  <td className="numeric"><WinRateBadge rate={t.winRate} /></td>
-                  <td className="numeric mono">{t.openPositions + t.closedPositions}</td>
-                  <td className="numeric mono">{formatUsd(t.notionalUsd)}</td>
-                  <td className="numeric mono">{formatPercent(t.maxDebtRatio)}</td>
-                  <td className="numeric mono">{formatUsd(t.feesUsd)}</td>
-                </tr>
-              ))}
+              {ranked.map((t, i) => {
+                const isPositive = t.totalPnlUsd >= 0;
+                const rankColor = i < 3 ? "var(--gold)" : "inherit";
+                return (
+                  <tr key={t.address}>
+                    <td className="mono" style={{ fontWeight: 800, color: rankColor }}>{i + 1}</td>
+                    <td>
+                      <a href={`/traders/${t.address}`} className="mono" style={{ textDecoration: "none" }}>
+                        {shortAddress(t.address)}
+                      </a>
+                    </td>
+                    <td className="numeric mono">
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
+                        <span style={{ color: tab === "pnl" ? (isPositive ? "var(--green)" : "var(--red)") : "inherit", fontWeight: 700 }}>
+                          {tab === "roi" ? formatPercent(t.roi) : tab === "active" ? t.totalPositions.toLocaleString() : formatUsd(getMetricValue(t, tab))}
+                        </span>
+                        {tab === "pnl" && <PnlBar value={t.totalPnlUsd} maxAbs={maxPnl} />}
+                      </div>
+                    </td>
+                    <td className={`numeric mono ${t.realizedPnlUsd > 0 ? "positive" : t.realizedPnlUsd < 0 ? "negative" : ""}`}>
+                      {t.closedPositions > 0 ? formatUsd(t.realizedPnlUsd) : <span className="muted">n/a</span>}
+                    </td>
+                    <td className="numeric">
+                      {t.closedPositions > 0 ? (
+                        <span style={{ color: t.winRate >= 0.6 ? "var(--green)" : t.winRate >= 0.3 ? "var(--amber)" : "var(--red)", fontWeight: 700 }}>
+                          {formatPercent(t.winRate)}
+                        </span>
+                      ) : (
+                        <span className="muted">n/a</span>
+                      )}
+                    </td>
+                    <td className="numeric mono">{t.totalPositions}</td>
+                    <td className="numeric mono">{formatUsd(t.notionalUsd)}</td>
+                    <td className="numeric mono">{formatPercent(t.maxDebtRatio)}</td>
+                    <td className="numeric mono">{formatUsd(t.feesUsd)}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
       )}
-
-      <div style={{ marginTop: 32 }}>
-        <h2>How scores are calculated</h2>
-        <div className="card-grid compact" style={{ marginTop: 8 }}>
-          <article className="card">
-            <p className="muted">PnL (40%)</p>
-            <p className="small">Hyperbolic tangent of total PnL scaled to $1M. Rewards both large profits and reduced losses.</p>
-          </article>
-          <article className="card">
-            <p className="muted">Win Rate (30%)</p>
-            <p className="small">Percentage of closed positions that were profitable. Raw fraction of winning / total closed.</p>
-          </article>
-          <article className="card">
-            <p className="muted">Activity (20%)</p>
-            <p className="small">Total positions (open + closed), capped at 20. Rewards active, engaged traders.</p>
-          </article>
-          <article className="card">
-            <p className="muted">Risk (10%)</p>
-            <p className="small">Penalty for high leverage. Max debt ratio above 80% starts reducing the score.</p>
-          </article>
-        </div>
-      </div>
     </section>
   );
 }
