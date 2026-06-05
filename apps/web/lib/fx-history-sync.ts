@@ -841,7 +841,7 @@ function realizedPnlFromOfficialOrders(pool: OfficialPoolConfig, orders: Record<
       continue;
     }
 
-    if (deltaSize < 0 && (type === "Reduce" || type === "Close" || type === "Liquidate")) {
+    if (deltaSize < 0 && (type === "Reduce" || type === "Close" || type === "Liquidate" || type === "WithdrawRepay" || type === "Withdraw")) {
       const closeSize = Math.min(Math.abs(deltaSize), entrySize);
       if (closeSize > 0 && entryPrice > 0) {
         const direction = pool.side === "short" ? -1 : 1;
@@ -892,7 +892,7 @@ async function updateUiPnlFromOfficialOrders(client: Client) {
 
   let updated = 0;
   const resetTypes = new Set(["Close"]);
-  const nonEntryTypes = new Set(["Reduce", "TickMovement", "Rebalance", "Liquidate", "CollIndexChanged", "DebtIndexChanged", "Repay", "WithdrawRepay"]);
+  const nonEntryTypes = new Set(["Reduce", "TickMovement", "Rebalance", "Liquidate", "CollIndexChanged", "DebtIndexChanged", "Repay", "WithdrawRepay", "Withdraw"]);
 
   for (const position of positionRows.rows) {
     const poolAddress = String(position.pool_address).toLowerCase();
