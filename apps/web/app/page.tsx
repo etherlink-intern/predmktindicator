@@ -323,8 +323,8 @@ export default async function HomePage() {
             </div>
           </div>
           <div className="average-entry-grid">
-            <AverageEntryPriceBook label="ETH" bucketsBySize={dashboard.averageEntryBook.eth} accent="#627eea" />
-            <AverageEntryPriceBook label="BTC" bucketsBySize={dashboard.averageEntryBook.btc} accent="#f7931a" />
+            <AverageEntryPriceBook label="ETH" buckets={dashboard.averageEntryBook.eth} accent="#627eea" />
+            <AverageEntryPriceBook label="BTC" buckets={dashboard.averageEntryBook.btc} accent="#f7931a" />
           </div>
         </section>
       )}
