@@ -58,6 +58,12 @@ function formatTime(value: string | null) {
   return new Intl.DateTimeFormat("en", { hour: "numeric", minute: "2-digit" }).format(new Date(value));
 }
 
+function formatUtcWindow(start: string | null, end: string | null) {
+  if (!start || !end) return "00/08/16 UTC windows";
+  const formatter = new Intl.DateTimeFormat("en", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "UTC" });
+  return `${formatter.format(new Date(start))}–${formatter.format(new Date(end))} UTC`;
+}
+
 function MarketOverviewSkeleton() {
   return (
     <div className="market-terminal skeleton-terminal" aria-label="Loading market overview">
@@ -100,6 +106,11 @@ function MarketOverviewTerminal({
   wallets,
   events,
   updatedAt,
+  fundingWindowFeesUsd,
+  fundingWindowPositions,
+  fundingWindowEvents,
+  fundingWindowStart,
+  fundingWindowEnd,
   hasSnapshot,
 }: {
   openInterestUsd: number;
@@ -115,6 +126,11 @@ function MarketOverviewTerminal({
   wallets: number;
   events: number;
   updatedAt: string | null;
+  fundingWindowFeesUsd: number;
+  fundingWindowPositions: number;
+  fundingWindowEvents: number;
+  fundingWindowStart: string | null;
+  fundingWindowEnd: string | null;
   hasSnapshot: boolean;
 }) {
   if (!hasSnapshot) return <MarketOverviewEmptyState />;
@@ -124,6 +140,7 @@ function MarketOverviewTerminal({
   const shortPct = (shortUsd / positioningTotal) * 100;
   const debtUtilization = openInterestUsd > 0 ? Math.min((debtUsd / openInterestUsd) * 100, 100) : 0;
   const riskShare = openInterestUsd > 0 ? (riskNotionalUsd / openInterestUsd) * 100 : 0;
+  const fundingWindowLabel = formatUtcWindow(fundingWindowStart, fundingWindowEnd);
 
   return (
     <section className="market-terminal" aria-label="Market overview position book snapshot">
@@ -176,7 +193,12 @@ function MarketOverviewTerminal({
         </div>
       </div>
 
-      <div className="card-grid" style={{ gridTemplateColumns: "repeat(4, 1fr)" }}>
+      <div className="card-grid" style={{ gridTemplateColumns: "repeat(5, minmax(0, 1fr))" }}>
+        <article className="card-hero" title={`${formatUsd(fundingWindowFeesUsd)} in xPOSITION open/close fees during ${fundingWindowLabel}`}>
+          <p className="metric-label" style={{ marginBottom: 4 }}>8h Fee Window</p>
+          <div className="metric-value">{formatCompactUsd(fundingWindowFeesUsd)}</div>
+          <div className="metric-detail">{fundingWindowPositions.toLocaleString()} positions · {fundingWindowEvents.toLocaleString()} events · {fundingWindowLabel}</div>
+        </article>
         <article className="card-hero" title={`Tracked debt ${formatUsd(debtUsd)}`}>
           <p className="metric-label" style={{ marginBottom: 4 }}>Debt Utilization</p>
           <div className="metric-value">{formatCompactUsd(debtUsd)}</div>
@@ -276,6 +298,11 @@ export default async function HomePage() {
         wallets={dashboard.walletMaintenance.knownWallets || dashboard.totals.uniqueTraders}
         events={dashboard.totals.syncedCashflows}
         updatedAt={dashboard.generatedAt}
+        fundingWindowFeesUsd={dashboard.totals.fundingWindowFeesUsd}
+        fundingWindowPositions={dashboard.totals.fundingWindowFeePositions}
+        fundingWindowEvents={dashboard.totals.fundingWindowFeeEvents}
+        fundingWindowStart={dashboard.totals.fundingWindowStart}
+        fundingWindowEnd={dashboard.totals.fundingWindowEnd}
         hasSnapshot={dashboard.hasSnapshot}
       />
 

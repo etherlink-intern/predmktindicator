@@ -10,7 +10,8 @@ type SortKey =
   | "maxDebtRatio"
   | "ethNetExposureUsd"
   | "btcNetExposureUsd"
-  | "unrealizedPnlUsd";
+  | "unrealizedPnlUsd"
+  | "fundingWindowFeesUsd";
 
 type SortDirection = "asc" | "desc";
 
@@ -22,6 +23,7 @@ const columns: Array<{ key: SortKey; label: string; align?: "right" }> = [
   { key: "notionalValueUsd", label: "Notional", align: "right" },
   { key: "equityUsd", label: "Equity", align: "right" },
   { key: "unrealizedPnlUsd", label: "Unrlzd PnL", align: "right" },
+  { key: "fundingWindowFeesUsd", label: "8h fees", align: "right" },
   { key: "debtValueUsd", label: "Debt", align: "right" },
   { key: "maxDebtRatio", label: "Debt ratio", align: "right" },
   { key: "ethNetExposureUsd", label: "Net ETH", align: "right" },
@@ -218,6 +220,7 @@ export function LeaderboardTable({ traders }: LeaderboardTableProps) {
                 `Equity ${formatUsd(trader.equityUsd)}`,
                 `Unrealized PnL ${trader.hasPositionHistory ? formatUsd(trader.unrealizedPnlUsd) : "not available"}`,
                 `Fees paid ${formatUsd(getFeesUsd(trader))}`,
+                `8h exchange-window fees ${formatUsd(trader.fundingWindowFeesUsd)} across ${trader.fundingWindowFeePositions.toLocaleString()} positions / ${trader.fundingWindowFeeEvents.toLocaleString()} events`,
                 instruments ? `Instruments: ${instruments}` : null
               ].filter(Boolean).join("\n");
               return (
@@ -235,6 +238,9 @@ export function LeaderboardTable({ traders }: LeaderboardTableProps) {
                   <td className="numeric" title={formatUsd(trader.equityUsd)}>{formatCompactUsd(trader.equityUsd)}</td>
                   <td className="numeric" title={trader.hasPositionHistory ? formatUsd(trader.unrealizedPnlUsd) : "PnL history unavailable"}>
                     {formatPnl(trader.unrealizedPnlUsd, trader.hasPositionHistory)}
+                  </td>
+                  <td className="numeric" title={`${formatUsd(trader.fundingWindowFeesUsd)} in the current 8h exchange funding window across ${trader.fundingWindowFeePositions.toLocaleString()} positions`}>
+                    {trader.fundingWindowFeesUsd > 0 ? formatCompactUsd(trader.fundingWindowFeesUsd) : "—"}
                   </td>
                   <td className="numeric" title={formatUsd(trader.debtValueUsd)}>{formatCompactUsd(trader.debtValueUsd)}</td>
                   <td className="numeric">

@@ -82,6 +82,7 @@ export default async function TraderPage({ params }: TraderPageProps) {
         <div><span className="metric-value" style={{ fontSize: 20, color: s.equityUsd >= 0 ? "var(--positive)" : "var(--negative)" }}>{formatUsd(s.equityUsd)}</span><div className="metric-label">Equity</div></div>
         <div><span className="metric-value" style={{ fontSize: 20 }}>{formatUsd(s.debtValueUsd)}</span><div className="metric-label">Debt</div></div>
         <div><span className="metric-value" style={{ fontSize: 20 }}>{formatUsd(s.feesUsd)}</span><div className="metric-label">Fees paid</div></div>
+        <div title={`${formatUsd(s.fundingWindowFeesUsd)} across ${s.fundingWindowFeePositions.toLocaleString()} positions / ${s.fundingWindowFeeEvents.toLocaleString()} events in the current 8h exchange funding window`}><span className="metric-value" style={{ fontSize: 20 }}>{formatUsd(s.fundingWindowFeesUsd)}</span><div className="metric-label">Fees / 8h</div></div>
         <div><span className="metric-value" style={{ fontSize: 20, color: s.unrealizedPnlUsd >= 0 ? "var(--positive)" : "var(--negative)" }}>{formatCompactUsd(s.unrealizedPnlUsd)}</span><div className="metric-label">Unrealized PnL</div></div>
         <div><span className="metric-value" style={{ fontSize: 20, color: s.totalPnlUsd >= 0 ? "var(--positive)" : "var(--negative)" }}>{formatCompactUsd(s.totalPnlUsd)}</span><div className="metric-label">Total PnL</div></div>
         <div><span className="metric-value" style={{ fontSize: 20 }}>{nf.format(s.positions)}</span><div className="metric-label">Positions</div></div>
@@ -166,6 +167,52 @@ export default async function TraderPage({ params }: TraderPageProps) {
           </tbody>
         </table>
       </div>
+
+
+      {/* Current 8h exchange-window fee activity */}
+      {profile.fundingFeeActivity.length > 0 && (
+        <>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "20px 0 8px" }}>
+            <h2 style={{ fontSize: 14, fontWeight: 600 }}>8h fee activity <span className="muted small" style={{ fontWeight: 400 }}>({profile.fundingFeeActivity.length} positions)</span></h2>
+            <span className="muted small">Binance/OKX-style 00:00 / 08:00 / 16:00 UTC window</span>
+          </div>
+
+          <div className="table-wrap" style={{ marginTop: 0 }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Position</th>
+                  <th>Market</th>
+                  <th>Side</th>
+                  <th className="numeric">8h fees</th>
+                  <th className="numeric">Events</th>
+                  <th className="numeric">Last fee event</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {profile.fundingFeeActivity.map((activity) => (
+                  <tr key={`${activity.poolAddress}:${activity.tokenId}`}>
+                    <td>
+                      <a className="mono" href={`/positions/${activity.poolAddress}-${activity.tokenId}`} style={{ fontSize: 13 }}>#{activity.tokenId}</a>
+                    </td>
+                    <td>{activity.poolName !== activity.poolAddress ? displayPool(activity.poolName) : activity.poolAddress.slice(0, 10) + "…"}</td>
+                    <td><span className={`pill ${activity.side}`}>{activity.side === "unknown" ? "—" : activity.side}</span></td>
+                    <td className="numeric">{formatUsd(activity.feesUsd)}</td>
+                    <td className="numeric">{nf.format(activity.events)}</td>
+                    <td className="numeric"><LocalTime date={activity.lastAt} /></td>
+                    <td>
+                      <span className={`pill ${activity.isOpen ? "long" : "short"}`} style={{ fontSize: 10 }}>
+                        {activity.isOpen ? "Open" : "Closed"}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
 
       {/* Historical positions table */}
       {profile.history.length > 0 && (

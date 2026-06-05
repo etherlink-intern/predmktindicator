@@ -44,6 +44,9 @@ export type TraderSummary = {
   unrealizedPnlUsd: number;
   totalPnlUsd: number;
   feesUsd: number;
+  fundingWindowFeesUsd: number;
+  fundingWindowFeeEvents: number;
+  fundingWindowFeePositions: number;
   hasPositionHistory: boolean;
 };
 
@@ -78,12 +81,25 @@ export type HistoricalPosition = {
   isOpen: boolean;
 };
 
+export type FundingFeeActivity = {
+  poolAddress: string;
+  poolName: string;
+  side: string;
+  tokenId: string;
+  feesUsd: number;
+  events: number;
+  firstAt: string | null;
+  lastAt: string | null;
+  isOpen: boolean;
+};
+
 export type TraderProfile = {
   owner: string;
   generatedAt: string | null;
   summary: TraderSummary;
   positions: PositionSummary[];
   history: HistoricalPosition[];
+  fundingFeeActivity: FundingFeeActivity[];
 };
 
 export type DashboardData = {
@@ -108,6 +124,12 @@ export type DashboardData = {
     syncedCashflows: number;
     syncedSnapshots: number;
     syncedEvents: number;
+    fundingWindowStart: string | null;
+    fundingWindowEnd: string | null;
+    fundingWindowFeesUsd: number;
+    fundingWindowFeeEvents: number;
+    fundingWindowFeePositions: number;
+    fundingWindowWallets: number;
   };
   pools: PoolSummary[];
   traders: TraderSummary[];
@@ -135,7 +157,13 @@ const emptyDashboard: DashboardData = {
     syncedTransfers: 0,
     syncedCashflows: 0,
     syncedSnapshots: 0,
-    syncedEvents: 0
+    syncedEvents: 0,
+    fundingWindowStart: null,
+    fundingWindowEnd: null,
+    fundingWindowFeesUsd: 0,
+    fundingWindowFeeEvents: 0,
+    fundingWindowFeePositions: 0,
+    fundingWindowWallets: 0
   },
   pools: [],
   traders: [],
@@ -203,6 +231,9 @@ function mapTrader(row: Record<string, unknown>): TraderSummary {
     unrealizedPnlUsd: toNumber(row.unrealizedPnlUsd),
     totalPnlUsd: toNumber(row.totalPnlUsd),
     feesUsd: toNumber(row.feesUsd),
+    fundingWindowFeesUsd: toNumber(row.fundingWindowFeesUsd),
+    fundingWindowFeeEvents: toNumber(row.fundingWindowFeeEvents),
+    fundingWindowFeePositions: toNumber(row.fundingWindowFeePositions),
     hasPositionHistory: Boolean(row.hasPositionHistory)
   };
 }
@@ -227,9 +258,82 @@ function mapPosition(row: Record<string, unknown>): PositionSummary {
   };
 }
 
-const traderSelect = `
+
+const fundingWindowSql = `
+  select
+    (
+      date_trunc('day', now() at time zone 'UTC') +
+      floor(extract(hour from now() at time zone 'UTC') / 8) * interval '8 hours'
+    ) at time zone 'UTC' as window_start
+`;
+
+const feeRawSql = `
+  case
+    when lower(c.pool_address) in (
+      '0x6ecfa38fee8a5277b91efda204c235814f0122e8',
+      '0xab709e26fa6b0a30c119d8c55b887ded24952473'
+    ) then c.debt_increase_raw * 5000000 / 1000000000 + c.debt_decrease_raw * 2000000 / 1000000000
+    when lower(c.pool_address) in (
+      '0x25707b9e6690b52c60ae6744d711cf9c1dfc1876',
+      '0xa0cc8162c523998856d59065faa254f87d20a5b0'
+    ) then c.collateral_in_raw * 3000000 / (1000000000 - 3000000) + c.collateral_out_raw * 1000000 / 1000000000
+    else c.fee_raw
+  end
+`;
+
+const fundingFeeEventsSql = `
+  with funding_window as (${fundingWindowSql}),
+  fee_events as (
+    select
+      coalesce(
+        nullif(lower(p.owner), ''),
+        nullif(lower(o.owner), ''),
+        nullif(lower(o.real_owner), ''),
+        nullif(lower(c.user_address), ''),
+        nullif(lower(c.recipient_address), '')
+      ) as owner,
+      lower(c.pool_address) as pool_address,
+      c.position_id,
+      c.block_timestamp,
+      c.block_number,
+      c.log_index,
+      ${feeRawSql} as fee_raw
+    from public.fx_position_cashflows c
+    cross join funding_window w
+    left join public.fx_current_positions p
+      on lower(p.pool_address) = lower(c.pool_address)
+      and p.token_id = c.position_id
+    left join public.fx_official_positions o
+      on lower(o.pool_address) = lower(c.pool_address)
+      and o.position_id = c.position_id
+    where c.source = 'manager'
+      and c.position_id is not null
+      and c.block_timestamp >= w.window_start
+      and c.block_timestamp < w.window_start + interval '8 hours'
+      and c.collateral_in_raw < 1000000000000000000000000
+      and c.collateral_out_raw < 1000000000000000000000000
+      and c.debt_increase_raw < 100000000000000000000000000000000
+      and c.debt_decrease_raw < 100000000000000000000000000000000
+  )
+  select * from fee_events
+`;
+
+const fundingFeesByOwnerSql = `
+  with fee_events as (${fundingFeeEventsSql})
   select
     owner,
+    coalesce(sum(fee_raw / 1000000000000000000), 0)::float8 as fees_usd,
+    count(*)::int as events,
+    count(distinct (pool_address, position_id))::int as positions
+  from fee_events
+  where owner is not null
+    and fee_raw > 0
+  group by owner
+`;
+
+const traderSelect = `
+  select
+    public.fx_current_positions.owner as owner,
     count(*)::int as positions,
     count(distinct pool_address)::int as pools,
     count(*) filter (where pool_name = 'WstETHLongPool')::int as "wstethLong",
@@ -291,8 +395,12 @@ const traderSelect = `
     coalesce(sum(
       total_fees_raw / 1000000000000000000
     ), 0)::float8 as "feesUsd",
+    coalesce(max(fw.fees_usd), 0)::float8 as "fundingWindowFeesUsd",
+    coalesce(max(fw.events), 0)::int as "fundingWindowFeeEvents",
+    coalesce(max(fw.positions), 0)::int as "fundingWindowFeePositions",
     coalesce(bool_or(entry_price_raw is not null and entry_price_raw > 0), false) or coalesce(bool_or(realized_pnl_raw != 0), false) as "hasPositionHistory"
   from public.fx_current_positions
+  left join (${fundingFeesByOwnerSql}) fw on fw.owner = lower(public.fx_current_positions.owner)
 `;
 
 export async function getDashboardData(): Promise<DashboardData> {
@@ -327,8 +435,23 @@ export async function getDashboardData(): Promise<DashboardData> {
           synced_transfers: string;
           synced_cashflows: string;
           synced_snapshots: string;
+          funding_window_start: Date | null;
+          funding_window_end: Date | null;
+          funding_window_fees_usd: number;
+          funding_window_fee_events: string;
+          funding_window_fee_positions: string;
+          funding_window_wallets: string;
         }>(`
-          with position_totals as (
+          with funding_window as (${fundingWindowSql}),
+          funding_fee_events as (${fundingFeeEventsSql}),
+          funding_fee_totals as (
+            select
+              coalesce(sum(fee_raw / 1000000000000000000) filter (where fee_raw > 0), 0)::float8 as funding_window_fees_usd,
+              count(*) filter (where fee_raw > 0)::text as funding_window_fee_events,
+              count(distinct (pool_address, position_id)) filter (where fee_raw > 0)::text as funding_window_fee_positions,
+              count(distinct owner) filter (where owner is not null and fee_raw > 0)::text as funding_window_wallets
+            from funding_fee_events
+          ), position_totals as (
             select
               count(*)::text as open_positions,
               count(distinct owner)::text as unique_traders,
@@ -364,8 +487,14 @@ export async function getDashboardData(): Promise<DashboardData> {
             position_totals.*,
             case when event_totals.has_transfers then (select count(*)::text from public.fx_position_transfers) else '0' end as synced_transfers,
             case when event_totals.has_cashflows then (select count(*)::text from public.fx_position_cashflows) else '0' end as synced_cashflows,
-            case when event_totals.has_snapshots then (select count(*)::text from public.fx_position_snapshots) else '0' end as synced_snapshots
-          from position_totals, event_totals
+            case when event_totals.has_snapshots then (select count(*)::text from public.fx_position_snapshots) else '0' end as synced_snapshots,
+            funding_window.window_start as funding_window_start,
+            funding_window.window_start + interval '8 hours' as funding_window_end,
+            funding_fee_totals.funding_window_fees_usd,
+            funding_fee_totals.funding_window_fee_events,
+            funding_fee_totals.funding_window_fee_positions,
+            funding_fee_totals.funding_window_wallets
+          from position_totals, event_totals, funding_window, funding_fee_totals
         `),
         client.query<{
           pool_name: string;
@@ -398,7 +527,7 @@ export async function getDashboardData(): Promise<DashboardData> {
         `),
         client.query<Record<string, unknown>>(`
           ${traderSelect}
-          group by owner
+          group by public.fx_current_positions.owner
           order by "notionalValueUsd" desc, positions desc, owner asc
         `)
       ]);
@@ -428,7 +557,13 @@ export async function getDashboardData(): Promise<DashboardData> {
           syncedEvents:
             Number(totals?.synced_transfers ?? 0) +
             Number(totals?.synced_cashflows ?? 0) +
-            Number(totals?.synced_snapshots ?? 0)
+            Number(totals?.synced_snapshots ?? 0),
+          fundingWindowStart: totals?.funding_window_start?.toISOString?.() ?? null,
+          fundingWindowEnd: totals?.funding_window_end?.toISOString?.() ?? null,
+          fundingWindowFeesUsd: toNumber(totals?.funding_window_fees_usd),
+          fundingWindowFeeEvents: Number(totals?.funding_window_fee_events ?? 0),
+          fundingWindowFeePositions: Number(totals?.funding_window_fee_positions ?? 0),
+          fundingWindowWallets: Number(totals?.funding_window_wallets ?? 0)
         },
         pools: poolsResult.rows.map((row) => ({
           poolName: row.pool_name,
@@ -518,12 +653,12 @@ export async function getTraderProfile(address: string): Promise<TraderProfile |
       if (!(await hasCurrentPositionsTable(client))) {
         return null;
       }
-      const [generatedAt, summaryResult, positionsResult, historyResult] = await Promise.all([
+      const [generatedAt, summaryResult, positionsResult, historyResult, fundingActivityResult] = await Promise.all([
         latestSnapshotTime(client),
         client.query<Record<string, unknown>>(
           `${traderSelect}
-           where lower(owner) = $1
-           group by owner
+           where lower(public.fx_current_positions.owner) = $1
+           group by public.fx_current_positions.owner
            limit 1`,
           [normalized]
         ),
@@ -611,6 +746,41 @@ export async function getTraderProfile(address: string): Promise<TraderProfile |
              on m.pool_address = lower(h.pool_address)
            order by h.last_cashflow_block desc nulls last`,
           [normalized]
+        ),
+        client.query<Record<string, unknown>>(
+          `with fee_events as (${fundingFeeEventsSql}),
+           pool_meta as (
+             select distinct on (lower(pool_address))
+               lower(pool_address) as pool_address,
+               pool_name,
+               side,
+               collateral
+             from public.fx_current_positions
+             order by lower(pool_address), updated_at desc nulls last
+           )
+           select
+             e.pool_address as "poolAddress",
+             coalesce(p.pool_name, m.pool_name, o.pool_name, e.pool_address) as "poolName",
+             coalesce(p.side, m.side, o.side, 'unknown') as "side",
+             e.position_id::text as "tokenId",
+             coalesce(sum(e.fee_raw / 1000000000000000000), 0)::float8 as "feesUsd",
+             count(*)::int as "events",
+             min(e.block_timestamp) as "firstAt",
+             max(e.block_timestamp) as "lastAt",
+             p.token_id is not null as "isOpen"
+           from fee_events e
+           left join public.fx_current_positions p
+             on lower(p.pool_address) = e.pool_address
+             and p.token_id = e.position_id
+           left join public.fx_official_positions o
+             on lower(o.pool_address) = e.pool_address
+             and o.position_id = e.position_id
+           left join pool_meta m on m.pool_address = e.pool_address
+           where e.owner = $1
+             and e.fee_raw > 0
+           group by e.pool_address, e.position_id, coalesce(p.pool_name, m.pool_name, o.pool_name, e.pool_address), coalesce(p.side, m.side, o.side, 'unknown'), p.token_id
+           order by max(e.block_timestamp) desc nulls last, sum(e.fee_raw) desc`,
+          [normalized]
         )
       ]);
 
@@ -631,6 +801,17 @@ export async function getTraderProfile(address: string): Promise<TraderProfile |
           cashflowEventCount: Number(row.cashflowEventCount),
           firstBlock: Number(row.firstBlock),
           lastBlock: Number(row.lastBlock),
+          isOpen: Boolean(row.isOpen),
+        })),
+        fundingFeeActivity: fundingActivityResult.rows.map((row) => ({
+          poolAddress: String(row.poolAddress),
+          poolName: String(row.poolName),
+          side: String(row.side),
+          tokenId: String(row.tokenId),
+          feesUsd: toNumber(row.feesUsd),
+          events: Number(row.events ?? 0),
+          firstAt: row.firstAt instanceof Date ? row.firstAt.toISOString() : null,
+          lastAt: row.lastAt instanceof Date ? row.lastAt.toISOString() : null,
           isOpen: Boolean(row.isOpen),
         })),
       };
