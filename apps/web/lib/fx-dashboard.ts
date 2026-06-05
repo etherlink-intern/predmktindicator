@@ -945,7 +945,7 @@ export async function getTraderProfile(address: string): Promise<TraderProfile |
              0::float8 as "unrealizedPnlUsd",
              coalesce(sum(
                case
-                 when coalesce(po.side, ps.side, 'long') = 'short' then pp.realized_pnl_raw / 1000000000000000000
+                 when coalesce(po.side, ps.side, 'long') = 'short' then coalesce(pp.ui_realized_pnl_usd, pp.realized_pnl_raw / 1000000000000000000)
                  when coalesce(po.collateral, ps.collateral) = 'WBTC' then pp.realized_pnl_raw * coalesce(pm.oracle_price, 0) / 100000000
                  else pp.realized_pnl_raw * coalesce(pm.oracle_price, 0) / 1000000000000000000
                end
@@ -1056,7 +1056,7 @@ export async function getTraderProfile(address: string): Promise<TraderProfile |
              h.cashflow_event_count as "cashflowEventCount",
              coalesce(
                case when coalesce(p.side, o.side, m.side, 'long') = 'short'
-                 then h.realized_pnl_raw / 1000000000000000000
+                 then coalesce(h.ui_realized_pnl_usd, h.realized_pnl_raw / 1000000000000000000)
                  when coalesce(p.collateral, o.collateral, m.collateral) = 'WBTC'
                  then h.realized_pnl_raw * coalesce(p.oracle_price, m.oracle_price, 0) / 100000000
                  else h.realized_pnl_raw * coalesce(p.oracle_price, m.oracle_price, 0) / 1000000000000000000
@@ -1280,7 +1280,7 @@ export async function getTopTraders(): Promise<TopTrader[]> {
           op.owner,
           coalesce(sum(
             case
-              when coalesce(po.side, pm_side.side, 'long') = 'short' then pp.realized_pnl_raw / 1000000000000000000
+              when coalesce(po.side, pm_side.side, 'long') = 'short' then coalesce(pp.ui_realized_pnl_usd, pp.realized_pnl_raw / 1000000000000000000)
               when coalesce(po.collateral, pm_side.collateral) = 'WBTC' then pp.realized_pnl_raw * coalesce(pm.oracle_price, 0) / 100000000
               else pp.realized_pnl_raw * coalesce(pm.oracle_price, 0) / 1000000000000000000
             end

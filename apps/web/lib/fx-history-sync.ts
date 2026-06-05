@@ -534,13 +534,39 @@ async function syncOfficialFxOrders(client: Client) {
   let positionCount = 0;
   let orderCount = 0;
   const chunkSize = 5;
+  const hasPositionPnl = await tableExists(client, "public.fx_position_pnl");
+  if (hasPositionPnl) {
+    await client.query(`
+      alter table public.fx_position_pnl
+        add column if not exists ui_entry_price_usd numeric,
+        add column if not exists ui_unrealized_pnl_usd numeric,
+        add column if not exists ui_realized_pnl_usd numeric,
+        add column if not exists ui_order_count integer not null default 0,
+        add column if not exists ui_last_order_block bigint;
+    `);
+  }
 
   for (const pool of OFFICIAL_POOLS) {
     const currentIds = await client.query<{ token_id: string }>(
       pool.side === "short"
-        ? `select token_id::text
-           from public.fx_current_positions
-           where lower(pool_address) = $1
+        ? `with candidate_ids as (
+             select token_id::numeric as token_id
+             from public.fx_current_positions
+             where lower(pool_address) = $1
+             union
+             select distinct position_id as token_id
+             from public.fx_position_cashflows
+             where lower(pool_address) = $1
+               and position_id is not null
+               and block_timestamp >= now() - interval '14 days'
+             ${hasPositionPnl ? `union
+             select position_id as token_id
+             from public.fx_position_pnl
+             where lower(pool_address) = $1
+               and (ui_last_order_block is null or last_cashflow_block > ui_last_order_block)` : ``}
+           )
+           select token_id::text
+           from candidate_ids
            order by token_id`
         : `select p.token_id::text
            from public.fx_current_positions p
@@ -764,6 +790,49 @@ function orderContribution(pool: OfficialPoolConfig, row: Record<string, unknown
   return (toFiniteNumber(row.delta_colls_raw) / pool.precision) * orderPrice;
 }
 
+function orderDeltaSize(pool: OfficialPoolConfig, row: Record<string, unknown>) {
+  if (pool.side === "short") {
+    return (toFiniteNumber(row.delta_debts_raw) / pool.precision) * (toFiniteNumber(row.price_rate_raw) / 1e18);
+  }
+  return toFiniteNumber(row.delta_colls_raw) / pool.precision;
+}
+
+function realizedPnlFromOfficialOrders(pool: OfficialPoolConfig, orders: Record<string, unknown>[]) {
+  let entrySize = 0;
+  let entryPrice = 0;
+  let realizedPnlUsd = 0;
+
+  for (const order of orders) {
+    const type = String(order.order_type);
+    const price = usdOrderPrice(pool, order);
+    const deltaSize = orderDeltaSize(pool, order);
+    if (!price || !Number.isFinite(price) || !Number.isFinite(deltaSize)) continue;
+
+    if (deltaSize > 0 && (type === "Open" || type === "Add")) {
+      entryPrice = entrySize + deltaSize > 0
+        ? (entrySize * entryPrice + deltaSize * price) / (entrySize + deltaSize)
+        : 0;
+      entrySize += deltaSize;
+      continue;
+    }
+
+    if (deltaSize < 0 && (type === "Reduce" || type === "Close" || type === "Liquidate")) {
+      const closeSize = Math.min(Math.abs(deltaSize), entrySize);
+      if (closeSize > 0 && entryPrice > 0) {
+        const direction = pool.side === "short" ? -1 : 1;
+        realizedPnlUsd += (price - entryPrice) * direction * closeSize;
+        entrySize = Math.max(0, entrySize - closeSize);
+      }
+      if (type === "Close" || entrySize < 1e-8) {
+        entrySize = 0;
+        entryPrice = 0;
+      }
+    }
+  }
+
+  return realizedPnlUsd;
+}
+
 async function updateUiPnlFromOfficialOrders(client: Client) {
   if (!(await tableExists(client, "public.fx_current_positions"))) return 0;
 
@@ -771,6 +840,7 @@ async function updateUiPnlFromOfficialOrders(client: Client) {
     alter table public.fx_position_pnl
       add column if not exists ui_entry_price_usd numeric,
       add column if not exists ui_unrealized_pnl_usd numeric,
+      add column if not exists ui_realized_pnl_usd numeric,
       add column if not exists ui_order_count integer not null default 0,
       add column if not exists ui_last_order_block bigint;
     alter table public.fx_current_positions
@@ -785,22 +855,26 @@ async function updateUiPnlFromOfficialOrders(client: Client) {
     from public.fx_current_positions
   `);
 
+  const currentByPosition = new Map<string, Record<string, unknown>>();
+  for (const current of currentRows.rows) {
+    currentByPosition.set(`${String(current.pool_address).toLowerCase()}:${String(current.token_id)}`, current);
+  }
+
+  const positionRows = await client.query<Record<string, unknown>>(`
+    select lower(pool_address) as pool_address, position_id, price_raw, price_rate_raw, debts_raw, colls_raw
+    from public.fx_official_positions
+  `);
+
   let updated = 0;
   const resetTypes = new Set(["Close"]);
   const nonEntryTypes = new Set(["Reduce", "TickMovement", "Rebalance", "Liquidate", "CollIndexChanged", "DebtIndexChanged", "Repay", "WithdrawRepay"]);
 
-  for (const current of currentRows.rows) {
-    const poolAddress = String(current.pool_address).toLowerCase();
-    const tokenId = String(current.token_id);
+  for (const position of positionRows.rows) {
+    const poolAddress = String(position.pool_address).toLowerCase();
+    const tokenId = String(position.position_id);
     const pool = OFFICIAL_POOLS.find((item) => item.poolAddress === poolAddress);
     if (!pool) continue;
-
-    const officialPosition = await client.query<Record<string, unknown>>(
-      `select * from public.fx_official_positions where lower(pool_address) = $1 and position_id = $2::numeric limit 1`,
-      [poolAddress, tokenId],
-    );
-    const position = officialPosition.rows[0];
-    if (!position) continue;
+    const current = currentByPosition.get(`${poolAddress}:${tokenId}`);
 
     const orders = await client.query<Record<string, unknown>>(
       `select * from public.fx_official_position_orders
@@ -809,6 +883,8 @@ async function updateUiPnlFromOfficialOrders(client: Client) {
       [poolAddress, tokenId],
     );
     if (orders.rows.length === 0) continue;
+
+    const realizedPnlUsd = realizedPnlFromOfficialOrders(pool, orders.rows);
 
     let entryValue = 0;
     let entryPrice = 0;
@@ -833,11 +909,13 @@ async function updateUiPnlFromOfficialOrders(client: Client) {
       previousSize = size;
     }
 
-    const currentPrice = usdCurrentPrice(pool, position, current);
-    const currentSize = pool.side === "short"
-      ? (toFiniteNumber(position.debts_raw) / 1e18) * (toFiniteNumber(position.price_rate_raw) / 1e18)
-      : toFiniteNumber(current.raw_collateral) / 1e18;    // raw_collateral is in shares (1e18), not asset decimals
-    const uiPnl = entryPrice > 0 && currentPrice > 0
+    const currentPrice = current ? usdCurrentPrice(pool, position, current) : 0;
+    const currentSize = current
+      ? (pool.side === "short"
+        ? (toFiniteNumber(position.debts_raw) / 1e18) * (toFiniteNumber(position.price_rate_raw) / 1e18)
+        : toFiniteNumber(current.raw_collateral) / 1e18)    // raw_collateral is in shares (1e18), not asset decimals
+      : 0;
+    const uiPnl = current && entryPrice > 0 && currentPrice > 0
       ? (currentPrice - entryPrice) * (pool.side === "short" ? -1 : 1) * currentSize
       : 0;
     const lastBlock = Math.max(...orders.rows.map((row) => toFiniteNumber(row.block_number)));
@@ -846,21 +924,24 @@ async function updateUiPnlFromOfficialOrders(client: Client) {
       `update public.fx_position_pnl
        set ui_entry_price_usd = $3,
            ui_unrealized_pnl_usd = $4,
-           ui_order_count = $5,
-           ui_last_order_block = $6,
+           ui_realized_pnl_usd = $5,
+           ui_order_count = $6,
+           ui_last_order_block = $7,
            updated_at = now()
        where lower(pool_address) = $1 and position_id = $2::numeric`,
-      [poolAddress, tokenId, entryPrice || null, uiPnl, orders.rows.length, lastBlock || null],
+      [poolAddress, tokenId, entryPrice || null, uiPnl, realizedPnlUsd, orders.rows.length, lastBlock || null],
     );
-    await client.query(
-      `update public.fx_current_positions
-       set ui_entry_price_usd = $3,
-           ui_unrealized_pnl_usd = $4,
-           ui_order_count = $5,
-           ui_last_order_block = $6
-       where lower(pool_address) = $1 and token_id = $2::numeric`,
-      [poolAddress, tokenId, entryPrice || null, uiPnl, orders.rows.length, lastBlock || null],
-    );
+    if (current) {
+      await client.query(
+        `update public.fx_current_positions
+         set ui_entry_price_usd = $3,
+             ui_unrealized_pnl_usd = $4,
+             ui_order_count = $5,
+             ui_last_order_block = $6
+         where lower(pool_address) = $1 and token_id = $2::numeric`,
+        [poolAddress, tokenId, entryPrice || null, uiPnl, orders.rows.length, lastBlock || null],
+      );
+    }
     updated += 1;
   }
   return updated;
@@ -889,7 +970,13 @@ export async function computeFxPositionPnl(client: Client) {
     );
   `);
   await client.query(`
-    alter table public.fx_position_pnl add column if not exists entry_price_raw numeric;
+    alter table public.fx_position_pnl
+      add column if not exists entry_price_raw numeric,
+      add column if not exists ui_entry_price_usd numeric,
+      add column if not exists ui_unrealized_pnl_usd numeric,
+      add column if not exists ui_realized_pnl_usd numeric,
+      add column if not exists ui_order_count integer not null default 0,
+      add column if not exists ui_last_order_block bigint;
   `);
 
   // Step 1: Aggregate cashflows with entry prices from PositionSnapshot
