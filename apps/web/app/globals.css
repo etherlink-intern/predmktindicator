@@ -512,6 +512,143 @@ code {
   margin-top: 6px;
 }
 
+/* ── Average Entry Price Book ───────────────────── */
+
+.average-entry-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.avg-entry-panel {
+  overflow: hidden;
+  padding: 12px;
+}
+
+.avg-entry-panel-header {
+  align-items: flex-start;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.avg-entry-panel-summary {
+  align-items: flex-end;
+  display: grid;
+  font-variant-numeric: tabular-nums;
+  gap: 2px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.info-dot {
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  cursor: help;
+  display: inline-flex;
+  font-size: 10px;
+  height: 17px;
+  justify-content: center;
+  line-height: 1;
+  width: 17px;
+}
+
+.avg-entry-scroll {
+  overflow-x: auto;
+}
+
+.avg-entry-ladder {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  min-width: 760px;
+}
+
+.avg-entry-super-row {
+  color: var(--muted);
+  display: grid;
+  font-size: 10px;
+  font-weight: 800;
+  grid-template-columns: 3fr 1.1fr 3fr;
+  letter-spacing: 0.08em;
+  padding: 2px 0 5px;
+  text-transform: uppercase;
+}
+
+.avg-entry-short-label { color: var(--negative); text-align: left; }
+.avg-entry-mid-label { text-align: center; }
+.avg-entry-long-label { color: var(--positive); text-align: right; }
+
+.avg-entry-row {
+  align-items: center;
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 7px;
+  grid-template-columns: 74px 76px 74px minmax(46px, 1fr) 96px minmax(46px, 1fr) 74px 76px 74px;
+  min-height: 25px;
+  padding: 4px 0;
+}
+
+.avg-entry-head {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  min-height: 22px;
+  text-transform: uppercase;
+}
+
+.avg-entry-cell,
+.avg-entry-bucket {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.avg-entry-num {
+  font-size: 11px;
+  text-align: right;
+}
+
+.avg-entry-bucket {
+  color: var(--fg);
+  font-size: 11px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.avg-entry-short { color: var(--negative); }
+.avg-entry-long { color: var(--positive); }
+
+.avg-entry-bar-cell {
+  align-items: center;
+  display: flex;
+  min-width: 0;
+}
+
+.avg-entry-bar-track {
+  background: rgba(148,163,184,0.08);
+  border-radius: 999px;
+  display: block;
+  height: 9px;
+  overflow: hidden;
+  width: 100%;
+}
+
+.avg-entry-bar-track-short { direction: rtl; }
+.avg-entry-bar-track-long { direction: ltr; }
+
+.avg-entry-bar {
+  border-radius: 999px;
+  display: block;
+  height: 100%;
+}
+
+.avg-entry-bar-short { background: rgba(239,68,68,0.68); }
+.avg-entry-bar-long { background: rgba(34,197,94,0.68); }
+
 /* ── Footer ─────────────────────────────────────── */
 
 .site-footer {
@@ -554,6 +691,7 @@ code {
 
 @media (max-width: 900px) {
   .card-grid { grid-template-columns: repeat(2, 1fr); }
+  .average-entry-grid { grid-template-columns: 1fr; }
   .status-bar-item { min-width: 80px; }
 }
 

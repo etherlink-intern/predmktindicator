@@ -21,7 +21,7 @@ export type PoolSummary = {
   avgDebtRatio: number;
 };
 
-export type EntryDepthBucket = {
+export type AverageEntryPriceBucket = {
   instrument: "ETH" | "BTC";
   bucketLowUsd: number;
   bucketHighUsd: number;
@@ -32,6 +32,8 @@ export type EntryDepthBucket = {
   shortPositions: number;
   longOwners: number;
   shortOwners: number;
+  longTopWalletShare: number;
+  shortTopWalletShare: number;
 };
 
 export type TraderSummary = {
@@ -145,9 +147,9 @@ export type DashboardData = {
     fundingWindowWallets: number;
   };
   pools: PoolSummary[];
-  entryDepth: {
-    eth: EntryDepthBucket[];
-    btc: EntryDepthBucket[];
+  averageEntryBook: {
+    eth: AverageEntryPriceBucket[];
+    btc: AverageEntryPriceBucket[];
   };
   traders: TraderSummary[];
   walletMaintenance: WalletMaintenanceSummary;
@@ -183,7 +185,7 @@ const emptyDashboard: DashboardData = {
     fundingWindowWallets: 0
   },
   pools: [],
-  entryDepth: { eth: [], btc: [] },
+  averageEntryBook: { eth: [], btc: [] },
   traders: [],
   walletMaintenance: emptyWalletMaintenanceSummary
 };
@@ -276,7 +278,7 @@ function mapPosition(row: Record<string, unknown>): PositionSummary {
   };
 }
 
-function mapEntryDepthBucket(row: Record<string, unknown>): EntryDepthBucket {
+function mapAverageEntryPriceBucket(row: Record<string, unknown>): AverageEntryPriceBucket {
   const instrument = String(row.instrument) === "BTC" ? "BTC" : "ETH";
   return {
     instrument,
@@ -288,7 +290,9 @@ function mapEntryDepthBucket(row: Record<string, unknown>): EntryDepthBucket {
     longPositions: toNumber(row.longPositions),
     shortPositions: toNumber(row.shortPositions),
     longOwners: toNumber(row.longOwners),
-    shortOwners: toNumber(row.shortOwners)
+    shortOwners: toNumber(row.shortOwners),
+    longTopWalletShare: toNumber(row.longTopWalletShare),
+    shortTopWalletShare: toNumber(row.shortTopWalletShare)
   };
 }
 
@@ -448,7 +452,7 @@ export async function getDashboardData(): Promise<DashboardData> {
         return emptyDashboard;
       }
 
-      const [generatedAt, walletMaintenance, totalsResult, poolsResult, entryDepthResult, tradersResult] = await Promise.all([
+      const [generatedAt, walletMaintenance, totalsResult, poolsResult, averageEntryBookResult, tradersResult] = await Promise.all([
         latestSnapshotTime(client),
         getWalletMaintenanceSummary(client),
         client.query<{
@@ -560,55 +564,132 @@ export async function getDashboardData(): Promise<DashboardData> {
           order by side, collateral, pool_name
         `),
         client.query<Record<string, unknown>>(`
-          with positioned_entries as (
+          with base_positions as (
             select
               case when collateral = 'WBTC' then 'BTC' else 'ETH' end as instrument,
               side,
-              owner,
+              lower(owner) as owner,
+              token_id,
               case when collateral = 'WBTC' then 5000::numeric else 200::numeric end as bucket_size_usd,
-              coalesce(
-                ui_entry_price_usd,
-                case
-                  when side = 'long' and entry_price_raw is not null and entry_price_raw > 0
-                    then entry_price_raw / 1000000000000000000
-                  when side = 'short' and entry_price_raw is not null and entry_price_raw > 0
-                    then 1000000000000000000::numeric / entry_price_raw
-                  else null
-                end
-              ) as entry_price_usd,
+              ui_entry_price_usd,
+              case
+                when side = 'long' and entry_price_raw is not null and entry_price_raw > 0
+                  then entry_price_raw / 1000000000000000000
+                when side = 'short' and entry_price_raw is not null and entry_price_raw > 0
+                  then 1000000000000000000::numeric / entry_price_raw
+                else null
+              end as fallback_entry_price_usd,
               case
                 when side = 'long' then coalesce(collateral_value_usd, 0)
                 when side = 'short' then coalesce(debt_value_usd, 0)
                 else 0
               end as notional_usd
             from public.fx_current_positions
-            where entry_price_raw is not null or ui_entry_price_usd is not null
+            where side in ('long', 'short')
+              and owner is not null
+              and (entry_price_raw is not null or ui_entry_price_usd is not null)
+          ), wallet_side_average as (
+            select
+              instrument,
+              side,
+              owner,
+              count(*)::int as open_position_count,
+              (
+                sum(coalesce(ui_entry_price_usd, fallback_entry_price_usd) * notional_usd)
+                / nullif(sum(notional_usd) filter (where coalesce(ui_entry_price_usd, fallback_entry_price_usd) is not null), 0)
+              ) as weighted_average_entry_price_usd
+            from base_positions
+            where notional_usd > 0
+            group by instrument, side, owner
+          ), positioned_entries as (
+            select
+              p.instrument,
+              p.side,
+              p.owner,
+              p.token_id,
+              p.bucket_size_usd,
+              coalesce(
+                p.ui_entry_price_usd,
+                case when w.open_position_count > 1 then w.weighted_average_entry_price_usd end,
+                p.fallback_entry_price_usd
+              ) as avg_entry_price_usd,
+              p.notional_usd
+            from base_positions p
+            left join wallet_side_average w
+              on w.instrument = p.instrument
+              and w.side = p.side
+              and w.owner = p.owner
           ), buckets as (
             select
               instrument,
               bucket_size_usd,
-              floor(entry_price_usd / bucket_size_usd) * bucket_size_usd as bucket_low_usd,
+              floor(avg_entry_price_usd / bucket_size_usd) * bucket_size_usd as bucket_low_usd,
               side,
               owner,
               notional_usd
             from positioned_entries
-            where entry_price_usd is not null
-              and entry_price_usd > 0
+            where avg_entry_price_usd is not null
+              and avg_entry_price_usd > 0
               and notional_usd > 0
+          ), owner_bucket_side as (
+            select
+              instrument,
+              bucket_size_usd,
+              bucket_low_usd,
+              side,
+              owner,
+              sum(notional_usd) as owner_notional_usd,
+              count(*)::int as owner_positions
+            from buckets
+            group by instrument, bucket_size_usd, bucket_low_usd, side, owner
+          ), grouped as (
+            select
+              instrument,
+              bucket_low_usd,
+              bucket_low_usd + bucket_size_usd as bucket_high_usd,
+              bucket_size_usd,
+              coalesce(sum(owner_notional_usd) filter (where side = 'long'), 0) as long_notional_usd,
+              coalesce(sum(owner_notional_usd) filter (where side = 'short'), 0) as short_notional_usd,
+              coalesce(sum(owner_positions) filter (where side = 'long'), 0)::int as long_positions,
+              coalesce(sum(owner_positions) filter (where side = 'short'), 0)::int as short_positions,
+              count(*) filter (where side = 'long')::int as long_owners,
+              count(*) filter (where side = 'short')::int as short_owners,
+              coalesce(
+                max(owner_notional_usd) filter (where side = 'long')
+                / nullif(sum(owner_notional_usd) filter (where side = 'long'), 0),
+                0
+              ) as long_top_wallet_share,
+              coalesce(
+                max(owner_notional_usd) filter (where side = 'short')
+                / nullif(sum(owner_notional_usd) filter (where side = 'short'), 0),
+                0
+              ) as short_top_wallet_share
+            from owner_bucket_side
+            group by instrument, bucket_size_usd, bucket_low_usd
+          ), ranked as (
+            select
+              *,
+              row_number() over (
+                partition by instrument
+                order by greatest(long_notional_usd, short_notional_usd) desc, bucket_low_usd desc
+              ) as relevance_rank
+            from grouped
           )
           select
             instrument,
             bucket_low_usd::float8 as "bucketLowUsd",
-            (bucket_low_usd + bucket_size_usd)::float8 as "bucketHighUsd",
+            bucket_high_usd::float8 as "bucketHighUsd",
             bucket_size_usd::float8 as "bucketSizeUsd",
-            coalesce(sum(notional_usd) filter (where side = 'long'), 0)::float8 as "longNotionalUsd",
-            coalesce(sum(notional_usd) filter (where side = 'short'), 0)::float8 as "shortNotionalUsd",
-            count(*) filter (where side = 'long')::int as "longPositions",
-            count(*) filter (where side = 'short')::int as "shortPositions",
-            count(distinct owner) filter (where side = 'long')::int as "longOwners",
-            count(distinct owner) filter (where side = 'short')::int as "shortOwners"
-          from buckets
-          group by instrument, bucket_size_usd, bucket_low_usd
+            long_notional_usd::float8 as "longNotionalUsd",
+            short_notional_usd::float8 as "shortNotionalUsd",
+            long_positions::int as "longPositions",
+            short_positions::int as "shortPositions",
+            long_owners::int as "longOwners",
+            short_owners::int as "shortOwners",
+            long_top_wallet_share::float8 as "longTopWalletShare",
+            short_top_wallet_share::float8 as "shortTopWalletShare"
+          from ranked
+          where relevance_rank <= 14
           order by instrument asc, bucket_low_usd desc
         `),
         client.query<Record<string, unknown>>(`
@@ -664,9 +745,9 @@ export async function getDashboardData(): Promise<DashboardData> {
           equityUsd: toNumber(row.equity_usd),
           avgDebtRatio: toNumber(row.avg_debt_ratio)
         })),
-        entryDepth: {
-          eth: entryDepthResult.rows.map(mapEntryDepthBucket).filter((bucket) => bucket.instrument === "ETH"),
-          btc: entryDepthResult.rows.map(mapEntryDepthBucket).filter((bucket) => bucket.instrument === "BTC")
+        averageEntryBook: {
+          eth: averageEntryBookResult.rows.map(mapAverageEntryPriceBucket).filter((bucket) => bucket.instrument === "ETH"),
+          btc: averageEntryBookResult.rows.map(mapAverageEntryPriceBucket).filter((bucket) => bucket.instrument === "BTC")
         },
         traders: tradersResult.rows.map(mapTrader),
         walletMaintenance
