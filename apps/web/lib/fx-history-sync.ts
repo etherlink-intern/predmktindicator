@@ -750,10 +750,11 @@ function orderPositionSize(pool: OfficialPoolConfig, row: Record<string, unknown
     // Official f(x) order stream uses asset decimals for deltaDebts, but
     // positionDebts is normalized to 1e18. WBTC shorts therefore need
     // deltaDebts / 1e8 for order contribution, but positionDebts / 1e18
-    // for current/remaining size. Using 1e8 here creates 1e10-scale PnL.
+    // for current/remaining size.
     return (toFiniteNumber(row.position_debts_raw) / 1e18) * (toFiniteNumber(row.price_rate_raw) / 1e18);
   }
-  return toFiniteNumber(row.position_colls_raw) / pool.precision;
+  // position_colls_raw is always in shares (1e18 scale), not asset decimals
+  return toFiniteNumber(row.position_colls_raw) / 1e18;
 }
 
 function orderContribution(pool: OfficialPoolConfig, row: Record<string, unknown>, orderPrice: number) {
@@ -835,7 +836,7 @@ async function updateUiPnlFromOfficialOrders(client: Client) {
     const currentPrice = usdCurrentPrice(pool, position, current);
     const currentSize = pool.side === "short"
       ? (toFiniteNumber(position.debts_raw) / 1e18) * (toFiniteNumber(position.price_rate_raw) / 1e18)
-      : toFiniteNumber(current.raw_collateral) / pool.precision;
+      : toFiniteNumber(current.raw_collateral) / 1e18;    // raw_collateral is in shares (1e18), not asset decimals
     const uiPnl = entryPrice > 0 && currentPrice > 0
       ? (currentPrice - entryPrice) * (pool.side === "short" ? -1 : 1) * currentSize
       : 0;
