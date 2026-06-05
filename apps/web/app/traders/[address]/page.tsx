@@ -32,10 +32,14 @@ function formatPnl(value: number) {
 
 function averageEntryMove(position: { side: string; entryPriceUsd: number; oraclePrice: number }) {
   if (!position.entryPriceUsd || !position.oraclePrice) return null;
+  // For shorts, oraclePrice is inverted (1/real_price). Convert to real price for comparison.
+  const markPrice = position.side === "short" && position.oraclePrice > 0 && position.oraclePrice < 1
+    ? 1 / position.oraclePrice
+    : position.oraclePrice;
   if (position.side === "short") {
-    return (position.entryPriceUsd - position.oraclePrice) / position.entryPriceUsd;
+    return (position.entryPriceUsd - markPrice) / position.entryPriceUsd;
   }
-  return (position.oraclePrice - position.entryPriceUsd) / position.entryPriceUsd;
+  return (markPrice - position.entryPriceUsd) / position.entryPriceUsd;
 }
 
 function formatEntryMove(value: number | null) {
