@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { formatPercent, formatUsd, type TopTrader } from "../../../lib/fx-dashboard";
+import { formatPercent, formatUsd, type TopTrader } from "../../lib/fx-dashboard";
 
 type TabId = "pnl" | "roi" | "realized" | "active" | "whale";
 
