@@ -75,13 +75,21 @@ const CHAINLIST_PUBLIC_ETH_RPC_URLS = [
 let rpcEndpointsSignature = "";
 let rpcEndpoints: RpcEndpointState[] = [];
 let rpcRotationIndex = 0;
+let alchemyFallbackUrls: string[] = [];
+
+function isAlchemyUrl(url: string) {
+  try {
+    return new URL(url).hostname.endsWith(".alchemy.com");
+  } catch {
+    return false;
+  }
+}
 
 function configuredRpcUrls() {
   const values = [
     process.env.RPC_ROUTER_URL,
     process.env.FX_CURRENT_POSITIONS_RPC_URL,
     process.env.FX_CURRENT_POSITIONS_RPC_URLS,
-    process.env.ALCHEMY_RPC_URL,
     process.env.GOLDSKY_RPC_URL,
     process.env.CHAINSTACK_RPC_URL,
     process.env.ETHEREUM_RPC_URL,
@@ -95,15 +103,27 @@ function configuredRpcUrls() {
 
   const seen = new Set<string>();
   const urls: string[] = [];
+  const alchemyUrls: string[] = [];
   for (const value of values) {
     for (const url of splitRpcUrls(value)) {
       if (!seen.has(url)) {
         seen.add(url);
-        urls.push(url);
+        if (isAlchemyUrl(url)) {
+          alchemyUrls.push(url);
+        } else {
+          urls.push(url);
+        }
       }
     }
   }
 
+  // Also catch ALCHEMY_RPC_URL separately (it was in the original list)
+  const alchemyDirect = process.env.ALCHEMY_RPC_URL;
+  if (alchemyDirect && !seen.has(alchemyDirect) && isAlchemyUrl(alchemyDirect)) {
+    alchemyUrls.push(alchemyDirect);
+  }
+
+  alchemyFallbackUrls = [...new Set(alchemyUrls)];
   return urls.length > 0 ? urls : ["http://127.0.0.1:18545"];
 }
 
@@ -222,7 +242,22 @@ async function rpcPost<T>(payload: object, timeoutSeconds: number): Promise<T> {
     }
   }
 
-  throw new Error(`RPC request failed across ${endpoints.length} configured endpoints: ${errorMessage(lastError)}`);
+  // Emergency fallback: try Alchemy only after all rotation endpoints have failed
+  if (alchemyFallbackUrls.length > 0) {
+    console.warn(`[sync-current] all rotation endpoints exhausted, falling back to ${alchemyFallbackUrls.length} Alchemy endpoint(s)`);
+    for (const alchemyUrl of alchemyFallbackUrls) {
+      try {
+        const result = await rpcPostToEndpoint<T>(alchemyUrl, payload, timeoutSeconds);
+        console.warn(`[sync-current] emergency Alchemy fallback succeeded: ${redactRpcUrl(alchemyUrl)}`);
+        return result;
+      } catch (error) {
+        lastError = error;
+        if (!isRetryableRpcError(error)) throw error;
+      }
+    }
+  }
+
+  throw new Error(`RPC request failed across ${endpoints.length} rotation endpoints and ${alchemyFallbackUrls.length} Alchemy fallback(s): ${errorMessage(lastError)}`);
 }
 
 function nextRpcEndpoint(endpoints: RpcEndpointState[]) {
